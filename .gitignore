@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+
+# Build / packaging
+build/
+dist/
+*.spec
+
+# VS Code
+.vscode/
+
+# App-generated output
+output/
+saved_packets/
+fpr_tracking.xlsx
+
+# Local settings
+settings.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

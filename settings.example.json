@@ -1,0 +1,36 @@
+{
+    "department_name": "Example Police Department",
+    "unit_name": "Digital Evidence Unit",
+    "default_technician": "Example Technician",
+    "common_technicians": [
+        "Example Technician"
+    ],
+    "common_investigators": [
+        "Officer Example",
+        "Detective Example"
+    ],
+    "common_tools": [
+        {
+            "name": "Cellebrite UFED",
+            "version": ""
+        },
+        {
+            "name": "Cellebrite Physical Analyzer",
+            "version": ""
+        },
+        {
+            "name": "Magnet AXIOM",
+            "version": ""
+        },
+        {
+            "name": "FTK Imager",
+            "version": ""
+        }
+    ],
+    "common_evidence_locations": [
+        "Evidence Locker",
+        "Property Room",
+        "Digital Evidence Storage"
+    ],
+    "default_scope_statement": "This documentation records the technical acquisition, extraction, imaging, and/or processing steps performed on the listed device or media. The technician did not conduct a content examination, investigative review, interpretation of user activity, or evidentiary analysis unless specifically stated. Any review, interpretation, or investigative conclusions are the responsibility of the assigned officer, investigator, or case agent."
+}
