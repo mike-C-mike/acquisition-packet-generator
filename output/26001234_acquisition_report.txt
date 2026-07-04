@@ -1,0 +1,59 @@
+DIGITAL EVIDENCE ACQUISITION DOCUMENTATION
+
+Administrative Information
+--------------------------
+Case Number: 26001234
+Requesting Officer / Investigator: Martinez
+Agency / Division: SBISD PD CID
+Technician: Matthew McBride
+Date Received: 7/3/2026
+Date Processed: 7/4/2026
+
+Evidence Item Information
+-------------------------
+Evidence Item Number: 126489
+Item Description: White iPhone 17
+Make / Model: iPhone / 17
+Serial / Identifier: oiewr23489u395isej
+Condition Received: Cracked screen
+
+Requested Action
+----------------
+The requesting officer requested that the listed device or media be processed for the purpose of generating an extraction, forensic image, reader report, case file, or other technical output for review by authorized personnel.
+
+Technical Process Performed
+---------------------------
+Processing Type: Mobile Device Extraction
+Tool Used: Cellebrite
+Tool Version: 10.2
+Processing Status: Completed
+Start Time: 14:32
+End Time: 19:47
+
+Generated Output
+----------------
+Output Type: Reader Report
+Output Filename / Identifier: 26001234 / 1
+Output Location: C:\Users\mikeCmike\Documents\acquisition-packet-generator
+
+Device / Media Return
+---------------------
+Returned to Evidence: Yes
+Returned Date / Time: 7/5/2026 / 14:99
+Evidence Location / Locker: rack 2 / bin 3
+
+Technician Notes
+----------------
+extraction successful
+
+Limitations and Scope
+---------------------
+This documentation records the technical acquisition, extraction, imaging, and/or processing steps performed on the listed device or media. The technician did not conduct a content examination, investigative review, interpretation of user activity, or evidentiary analysis unless specifically stated. Any review, interpretation, or investigative conclusions are the responsibility of the assigned officer, investigator, or case agent.
+
+Technician Statement
+--------------------
+I documented the above process based on the actions performed, tool output, and information available at the time of processing.
+
+Report Generated
+----------------
+Generated On: 2026-07-03 18:53:08
