@@ -1,4 +1,5 @@
 import json
+import sys
 from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
@@ -7,9 +8,22 @@ from openpyxl.utils import get_column_letter
 
 
 APP_NAME = "Acquisition Packet Generator"
-APP_VERSION = "0.1"
+APP_VERSION = "0.3"
 
-BASE_DIR = Path(__file__).parent
+def get_base_dir():
+    """
+    Return the correct working directory.
+
+    When running from source, use the project folder.
+    When running as a PyInstaller EXE, use the folder containing the EXE.
+    """
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).parent
+
+    return Path(__file__).parent
+
+
+BASE_DIR = get_base_dir()
 OUTPUT_DIR = BASE_DIR / "output"
 SAVED_PACKETS_DIR = BASE_DIR / "saved_packets"
 SETTINGS_PATH = BASE_DIR / "settings.json"
