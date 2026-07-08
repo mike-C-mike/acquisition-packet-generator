@@ -128,14 +128,48 @@ STORAGE_UNITS = [
     "Unknown"
 ]
 
+def get_output_paths(settings=None):
+    """
+    Return output paths based on settings.
 
-def ensure_directories():
+    If no custom base output directory is set, use BASE_DIR.
+    """
+    if settings is None:
+        settings = load_or_create_settings()
+
+    output_settings = settings.get("output_paths", {})
+
+    base_output_dir = output_settings.get("base_output_dir", "").strip()
+
+    if base_output_dir:
+        base_path = Path(base_output_dir)
+    else:
+        base_path = BASE_DIR
+
+    reports_folder_name = output_settings.get("reports_folder_name", "output")
+    saved_packets_folder_name = output_settings.get("saved_packets_folder_name", "saved_packets")
+    tracking_workbook_name = output_settings.get("tracking_workbook_name", "fpr_tracking.xlsx")
+
+    reports_dir = base_path / reports_folder_name
+    saved_packets_dir = base_path / saved_packets_folder_name
+    tracking_workbook_path = base_path / tracking_workbook_name
+
+    return {
+        "base_path": base_path,
+        "reports_dir": reports_dir,
+        "saved_packets_dir": saved_packets_dir,
+        "tracking_workbook_path": tracking_workbook_path
+    }
+
+def ensure_directories(settings=None):
     """
     Create local output folders if they do not already exist.
-    These folders should be ignored by Git.
     """
-    OUTPUT_DIR.mkdir(exist_ok=True)
-    SAVED_PACKETS_DIR.mkdir(exist_ok=True)
+    paths = get_output_paths(settings)
+
+    paths["base_path"].mkdir(exist_ok=True)
+    paths["reports_dir"].mkdir(exist_ok=True)
+    paths["saved_packets_dir"].mkdir(exist_ok=True)
 
 
 def load_or_create_settings():
@@ -423,22 +457,24 @@ def build_txt_report(packet):
     return "\n".join(lines)
 
 
-def save_packet_outputs(packet):
+def save_packet_outputs(packet, settings=None):
     """
+
     Save the acquisition packet as TXT and JSON.
 
     Returns:
         tuple: (txt_path, json_path)
     """
-    ensure_directories()
+    ensure_directories(settings)
+    paths = get_output_paths(settings)
 
     packet = add_summary_to_packet(packet)
 
     case_number = packet.get("general_info", {}).get("case_number", "UNKNOWN_CASE")
     safe_case = safe_filename(case_number)
 
-    txt_path = OUTPUT_DIR / f"{safe_case}_acquisition_packet.txt"
-    json_path = SAVED_PACKETS_DIR / f"{safe_case}_acquisition_packet.json"
+    txt_path = paths["reports_dir"] / f"{safe_case}_acquisition_packet.txt"
+    json_path = paths["saved_packets_dir"] / f"{safe_case}_acquisition_packet.json"
 
     report_text = build_txt_report(packet)
 
@@ -481,10 +517,13 @@ def autofit_columns(sheet):
         sheet.column_dimensions[column_letter].width = min(max_length + 2, 40)
 
 
-def get_or_create_workbook():
+def get_or_create_workbook(settings=None):
     """
     Open the existing FPR tracking workbook or create a new one.
     """
+    paths = get_output_paths(settings)
+    tracking_path = paths["tracking_workbook_path"]
+
     if FPR_TRACKING_PATH.exists():
         workbook = load_workbook(FPR_TRACKING_PATH)
     else:
@@ -545,7 +584,7 @@ def get_or_create_workbook():
     return workbook
 
 
-def append_to_fpr_tracking(packet):
+def append_to_fpr_tracking(packet, settings=None):
     """
     Append acquisition packet summary data to fpr_tracking.xlsx.
 
@@ -558,7 +597,9 @@ def append_to_fpr_tracking(packet):
     """
     packet = add_summary_to_packet(packet)
 
-    workbook = get_or_create_workbook()
+    ensure_directories(settings)
+    paths = get_output_paths(settings)
+    workbook = get_or_create_workbook(settings)
 
     general = packet.get("general_info", {})
     subject = packet.get("subject", {})
@@ -636,6 +677,6 @@ def append_to_fpr_tracking(packet):
     for sheet in workbook.worksheets:
         autofit_columns(sheet)
 
-    workbook.save(FPR_TRACKING_PATH)
+    workbook.save(paths["tracking_workbook_path"])
 
-    return FPR_TRACKING_PATH
+    return paths["tracking_workbook_path"]
