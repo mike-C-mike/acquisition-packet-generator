@@ -8,7 +8,7 @@ from openpyxl.utils import get_column_letter
 
 
 APP_NAME = "Acquisition Packet Generator"
-APP_VERSION = "0.1"
+APP_VERSION = "0.4"
 
 BASE_DIR = Path(__file__).parent
 OUTPUT_DIR = BASE_DIR / "output"
