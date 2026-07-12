@@ -329,6 +329,9 @@ def save_packet_outputs(packet, settings=None):
     """
     Save the acquisition packet as TXT and JSON.
 
+    Filenames include case number, a case title/offense value, and a timestamp
+    so repeated exports do not overwrite earlier packet files.
+
     Returns:
         tuple: (txt_path, json_path)
     """
@@ -337,11 +340,30 @@ def save_packet_outputs(packet, settings=None):
 
     packet = add_summary_to_packet(packet)
 
-    case_number = packet.get("general_info", {}).get("case_number", "UNKNOWN_CASE")
-    safe_case = safe_filename(case_number)
+    general = packet.get("general_info", {})
+    report_info = packet.get("report_info", {})
 
-    txt_path = paths["reports_dir"] / f"{safe_case}_acquisition_packet.txt"
-    json_path = paths["saved_packets_dir"] / f"{safe_case}_acquisition_packet.json"
+    case_number = general.get("case_number", "UNKNOWN_CASE")
+
+    case_title = (
+        general.get("offense_or_incident", "")
+        or report_info.get("case_type", "")
+        or general.get("case_type", "")
+        or "Untitled_Case"
+    )
+
+    timestamp = packet.get("created_at", "")
+    if not timestamp:
+        timestamp = "unknown_time"
+
+    safe_case = safe_filename(case_number)
+    safe_title = safe_filename(case_title)
+    safe_timestamp = safe_filename(timestamp)
+
+    base_filename = f"{safe_case}_{safe_title}_{safe_timestamp}_acquisition_packet"
+
+    txt_path = paths["reports_dir"] / f"{base_filename}.txt"
+    json_path = paths["saved_packets_dir"] / f"{base_filename}.json"
 
     report_text = build_txt_report(packet)
 
@@ -353,7 +375,6 @@ def save_packet_outputs(packet, settings=None):
     )
 
     return txt_path, json_path
-
 
 def style_header_row(sheet):
     """
@@ -448,6 +469,30 @@ def get_or_create_workbook(settings=None):
         ])
         style_header_row(sheet)
 
+    if "FPR Case Info" not in workbook.sheetnames:
+        sheet = workbook.create_sheet("FPR Case Info")
+        sheet.append([
+            "Case Number",
+            "Agency Case Number",
+            "State / Local Case No.",
+            "Subject Last Name",
+            "Subject First Name",
+            "Case Type",
+            "Offense / Incident",
+            "City of Offense",
+            "State of Offense",
+            "Country of Offense",
+            "Exam Start Date",
+            "Exam End Date",
+            "Other Data Analyzed",
+            "Case Summary",
+            "Requesting Investigator",
+            "Technician",
+            "Date Processed",
+            "Report Generated"
+        ])
+        style_header_row(sheet)
+
     return workbook
 
 
@@ -472,6 +517,7 @@ def append_to_fpr_tracking(packet, settings=None):
     subject = packet.get("subject", {})
     processing = packet.get("processing", {})
     output = packet.get("output", {})
+    report_info = packet.get("report_info", {})
     summary = packet.get("summary", {})
     counts = summary.get("device_counts", {})
 
@@ -541,9 +587,35 @@ def append_to_fpr_tracking(packet, settings=None):
             general.get("technician", "")
         ])
 
+    for device in packet.get("devices", []):
+        device_detail.append([
+            general.get("case_number", ""),
+            subject.get("last_name", ""),
+            subject.get("first_name", ""),
+            device.get("device_type", ""),
+            device.get("quantity", ""),
+            device.get("description", ""),
+            device.get("make", ""),
+            device.get("model", ""),
+            device.get("serial", ""),
+            device.get("capacity_size"),
+            device.get("capacity_unit", ""),
+            device.get("storage_each_gb"),
+            device.get("storage_total_gb"),
+            general.get("date_processed", ""),
+            general.get("technician", "")
+        ])
+
     for sheet in workbook.worksheets:
         autofit_columns(sheet)
 
-    workbook.save(paths["tracking_workbook_path"])
+    try:
+        workbook.save(paths["tracking_workbook_path"])
+    except PermissionError as error:
+        raise PermissionError(
+            "Unable to update the XLSX tracking workbook.\n\n"
+            "The tracking workbook may already be open in Excel or locked by another program.\n\n"
+            "Close fpr_tracking.xlsx and try generating the packet again."
+        ) from error
 
     return paths["tracking_workbook_path"]

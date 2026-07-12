@@ -195,6 +195,24 @@ class AcquisitionPacketGUI:
         widget.grid(row=row, column=column, sticky="w", padx=10, pady=4)
         return variable
 
+    def textbox(self, parent, row, column=1, width=70, height=4, default=""):
+        widget = tk.Text(
+            parent,
+            width=width,
+            height=height,
+            bg=THEME["input_bg"],
+            fg=THEME["text"],
+            insertbackground=THEME["text"],
+            relief="flat",
+            wrap="word"
+        )
+        widget.grid(row=row, column=column, sticky="w", padx=10, pady=6)
+
+        if default:
+            widget.insert("1.0", default)
+
+        return widget
+    
     def build_general_tab(self):
         frame = self.general_tab
 
@@ -204,43 +222,58 @@ class AcquisitionPacketGUI:
         self.label(frame, "Agency Case Number", 1)
         self.agency_case_number = self.entry(frame, 1)
 
-        self.label(frame, "Offense / Incident Type", 2)
-        self.offense_or_incident = self.entry(frame, 2)
+        self.label(frame, "State / Local Case No.", 2)
+        self.state_local_case_number = self.entry(frame, 2)
 
-        self.label(frame, "Subject Last Name", 3)
-        self.subject_last = self.entry(frame, 3)
+        self.label(frame, "Case Type", 3)
+        self.case_type = self.entry(frame, 3)
 
-        self.label(frame, "Subject First Name", 4)
-        self.subject_first = self.entry(frame, 4)
+        self.label(frame, "Offense / Incident Type", 4)
+        self.offense_or_incident = self.entry(frame, 4)
+
+        self.label(frame, "City of Offense", 5)
+        self.city_of_offense = self.entry(frame, 5)
+
+        self.label(frame, "State of Offense", 6)
+        self.state_of_offense = self.entry(frame, 6, default="TX")
+
+        self.label(frame, "Country of Offense", 7)
+        self.country_of_offense = self.entry(frame, 7, default="United States of America")
+
+        self.label(frame, "Subject Last Name", 8)
+        self.subject_last = self.entry(frame, 8)
+
+        self.label(frame, "Subject First Name", 9)
+        self.subject_first = self.entry(frame, 9)
 
         investigators = self.settings.get("common_investigators", [])
-        self.label(frame, "Requesting Investigator", 5)
+        self.label(frame, "Requesting Investigator", 10)
         if investigators:
-            self.requesting_investigator = self.combo(frame, investigators, 5)
+            self.requesting_investigator = self.combo(frame, investigators, 10)
         else:
-            self.requesting_investigator = self.entry(frame, 5)
+            self.requesting_investigator = self.entry(frame, 10)
 
         technicians = self.settings.get("common_technicians", [])
         default_technician = self.settings.get("default_technician", "")
-        self.label(frame, "Technician", 6)
+        self.label(frame, "Technician", 11)
         if technicians:
-            self.technician = self.combo(frame, technicians, 6)
+            self.technician = self.combo(frame, technicians, 11)
         else:
-            self.technician = self.entry(frame, 6, default=default_technician)
+            self.technician = self.entry(frame, 11, default=default_technician)
 
         today = datetime.now().strftime("%Y-%m-%d")
 
-        self.label(frame, "Date Received", 7)
-        self.date_received = self.entry(frame, 7, default=today)
+        self.label(frame, "Date Received", 12)
+        self.date_received = self.entry(frame, 12, default=today)
 
-        self.label(frame, "Time Received", 8)
-        self.time_received = self.entry(frame, 8)
+        self.label(frame, "Time Received", 13)
+        self.time_received = self.entry(frame, 13)
 
-        self.label(frame, "Date Processed", 9)
-        self.date_processed = self.entry(frame, 9, default=today)
+        self.label(frame, "Date Processed", 14)
+        self.date_processed = self.entry(frame, 14, default=today)
 
-        self.label(frame, "Time Processed", 10)
-        self.time_processed = self.entry(frame, 10)
+        self.label(frame, "Time Processed", 15)
+        self.time_processed = self.entry(frame, 15)
 
     def build_intake_tab(self):
         frame = self.intake_tab
@@ -654,31 +687,45 @@ class AcquisitionPacketGUI:
     def build_output_tab(self):
         frame = self.output_tab
 
-        self.label(frame, "Processing Type", 0)
-        self.processing_type = self.combo(frame, PROCESSING_TYPES, 0)
+        today = datetime.now().strftime("%Y-%m-%d")
 
-        self.label(frame, "Processing Status", 1)
-        self.processing_status = self.combo(frame, PROCESSING_STATUSES, 1)
+        self.label(frame, "Exam Start Date", 0)
+        self.exam_start_date = self.entry(frame, 0, default=today)
 
-        self.label(frame, "Processing Notes", 2)
-        self.processing_notes = self.entry(frame, 2, width=70)
+        self.label(frame, "Exam End Date", 1)
+        self.exam_end_date = self.entry(frame, 1, default=today)
 
-        self.label(frame, "Output Type", 3)
-        self.output_type = self.combo(frame, OUTPUT_TYPES, 3)
+        self.label(frame, "Processing Type", 2)
+        self.processing_type = self.combo(frame, PROCESSING_TYPES, 2)
 
-        self.label(frame, "Output Filename / Identifier", 4)
-        self.output_filename = self.entry(frame, 4, width=70)
+        self.label(frame, "Processing Status", 3)
+        self.processing_status = self.combo(frame, PROCESSING_STATUSES, 3)
 
-        self.label(frame, "Output Location", 5)
-        self.output_location = self.entry(frame, 5, width=70)
+        self.label(frame, "Processing Notes", 4)
+        self.processing_notes = self.entry(frame, 4, width=70)
 
-        self.reader_report_generated = self.checkbox(frame, "Reader report generated", 6)
+        self.label(frame, "Output Type", 5)
+        self.output_type = self.combo(frame, OUTPUT_TYPES, 5)
+
+        self.label(frame, "Output Filename / Identifier", 6)
+        self.output_filename = self.entry(frame, 6, width=70)
+
+        self.label(frame, "Output Location", 7)
+        self.output_location = self.entry(frame, 7, width=70)
+
+        self.reader_report_generated = self.checkbox(frame, "Reader report generated", 8)
         self.reader_report_generated.set(True)
 
-        self.case_file_generated = self.checkbox(frame, "Case file generated", 7)
+        self.case_file_generated = self.checkbox(frame, "Case file generated", 9)
 
-        self.label(frame, "Technician Notes", 8)
-        self.technician_notes = self.entry(frame, 8, width=70)
+        self.label(frame, "Other Data Analyzed", 10)
+        self.other_data_analyzed = self.textbox(frame, 10, width=70, height=4)
+
+        self.label(frame, "Case Summary", 11)
+        self.case_summary = self.textbox(frame, 11, width=70, height=5)
+
+        self.label(frame, "Technician Notes", 12)
+        self.technician_notes = self.textbox(frame, 12, width=70, height=5)
 
     def build_generate_tab(self):
         frame = self.review_tab
@@ -760,6 +807,10 @@ class AcquisitionPacketGUI:
     def get_widget_value(self, widget):
         if isinstance(widget, ttk.Combobox):
             return widget.get().strip()
+
+        if isinstance(widget, tk.Text):
+            return widget.get("1.0", tk.END).strip()
+
         return widget.get().strip()
 
     def clear_form(self):
@@ -783,7 +834,17 @@ class AcquisitionPacketGUI:
         # General Info
         self.case_number.delete(0, tk.END)
         self.agency_case_number.delete(0, tk.END)
+        self.state_local_case_number.delete(0, tk.END)
+        self.case_type.delete(0, tk.END)
         self.offense_or_incident.delete(0, tk.END)
+        self.city_of_offense.delete(0, tk.END)
+
+        self.state_of_offense.delete(0, tk.END)
+        self.state_of_offense.insert(0, "TX")
+
+        self.country_of_offense.delete(0, tk.END)
+        self.country_of_offense.insert(0, "United States of America")
+
         self.subject_last.delete(0, tk.END)
         self.subject_first.delete(0, tk.END)
 
@@ -855,6 +916,12 @@ class AcquisitionPacketGUI:
             self.tool_tree.delete(item)
 
         # Processing / Output
+        self.exam_start_date.delete(0, tk.END)
+        self.exam_start_date.insert(0, today)
+
+        self.exam_end_date.delete(0, tk.END)
+        self.exam_end_date.insert(0, today)
+
         if PROCESSING_TYPES:
             self.processing_type.set(PROCESSING_TYPES[0])
 
@@ -872,7 +939,9 @@ class AcquisitionPacketGUI:
         self.reader_report_generated.set(True)
         self.case_file_generated.set(False)
 
-        self.technician_notes.delete(0, tk.END)
+        self.other_data_analyzed.delete("1.0", tk.END)
+        self.case_summary.delete("1.0", tk.END)
+        self.technician_notes.delete("1.0", tk.END)
 
         # Generate/status area
         self.status_text.delete("1.0", tk.END)
@@ -907,7 +976,12 @@ class AcquisitionPacketGUI:
             "general_info": {
                 "case_number": case_number,
                 "agency_case_number": self.get_widget_value(self.agency_case_number),
+                "state_local_case_number": self.get_widget_value(self.state_local_case_number),
+                "case_type": self.get_widget_value(self.case_type),
                 "offense_or_incident": self.get_widget_value(self.offense_or_incident),
+                "city_of_offense": self.get_widget_value(self.city_of_offense),
+                "state_of_offense": self.get_widget_value(self.state_of_offense),
+                "country_of_offense": self.get_widget_value(self.country_of_offense),
                 "requesting_investigator": self.get_widget_value(self.requesting_investigator),
                 "technician": self.get_widget_value(self.technician),
                 "date_received": self.get_widget_value(self.date_received),
@@ -932,6 +1006,8 @@ class AcquisitionPacketGUI:
             "devices": self.devices,
             "tools_used": self.tools_used,
             "processing": {
+                "exam_start_date": self.get_widget_value(self.exam_start_date),
+                "exam_end_date": self.get_widget_value(self.exam_end_date),
                 "processing_type": self.get_widget_value(self.processing_type),
                 "processing_status": self.get_widget_value(self.processing_status),
                 "processing_notes": self.get_widget_value(self.processing_notes)
@@ -942,6 +1018,17 @@ class AcquisitionPacketGUI:
                 "output_location": self.get_widget_value(self.output_location),
                 "reader_report_generated": self.reader_report_generated.get(),
                 "case_file_generated": self.case_file_generated.get()
+            },
+            "report_info": {
+                "case_type": self.get_widget_value(self.case_type),
+                "exam_start_date": self.get_widget_value(self.exam_start_date),
+                "exam_end_date": self.get_widget_value(self.exam_end_date),
+                "state_local_case_number": self.get_widget_value(self.state_local_case_number),
+                "city_of_offense": self.get_widget_value(self.city_of_offense),
+                "state_of_offense": self.get_widget_value(self.state_of_offense),
+                "country_of_offense": self.get_widget_value(self.country_of_offense),
+                "other_data_analyzed": self.get_widget_value(self.other_data_analyzed),
+                "case_summary": self.get_widget_value(self.case_summary)
             },
             "technician_notes": self.get_widget_value(self.technician_notes),
             "scope_statement": self.settings.get("default_scope_statement", "")
