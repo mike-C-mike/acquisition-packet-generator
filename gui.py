@@ -728,6 +728,22 @@ class AcquisitionPacketGUI:
             pady=10,
             font=("Segoe UI", 11)
         )
+
+        clear_button = tk.Button(
+            button_frame,
+            text="New / Clear Packet",
+            command=self.clear_form,
+            bg=THEME["input_bg"],
+            fg=THEME["text"],
+            activebackground=THEME["input_bg"],
+            activeforeground=THEME["text"],
+            relief="flat",
+            padx=20,
+            pady=10,
+            font=("Segoe UI", 11)
+        )
+        clear_button.pack(side="left", padx=(10, 0))
+
         open_folder_button.pack(side="left")
 
         self.status_text = tk.Text(
@@ -745,6 +761,128 @@ class AcquisitionPacketGUI:
         if isinstance(widget, ttk.Combobox):
             return widget.get().strip()
         return widget.get().strip()
+
+    def clear_form(self):
+        """
+        Clear the current form so a new acquisition packet can be started.
+
+        This does not delete settings, generated reports, saved packets,
+        or the tracking workbook.
+        """
+        confirm = messagebox.askyesno(
+            "Clear Current Packet",
+            "Clear the current form and start a new packet?\n\n"
+            "This will not delete settings or generated output files."
+        )
+
+        if not confirm:
+            return
+
+        today = datetime.now().strftime("%Y-%m-%d")
+
+        # General Info
+        self.case_number.delete(0, tk.END)
+        self.agency_case_number.delete(0, tk.END)
+        self.offense_or_incident.delete(0, tk.END)
+        self.subject_last.delete(0, tk.END)
+        self.subject_first.delete(0, tk.END)
+
+        if isinstance(self.requesting_investigator, ttk.Combobox):
+            values = self.requesting_investigator["values"]
+            if values:
+                self.requesting_investigator.set(values[0])
+            else:
+                self.requesting_investigator.set("")
+        else:
+            self.requesting_investigator.delete(0, tk.END)
+
+        if isinstance(self.technician, ttk.Combobox):
+            default_technician = self.settings.get("default_technician", "")
+            values = self.technician["values"]
+
+            if default_technician and default_technician in values:
+                self.technician.set(default_technician)
+            elif values:
+                self.technician.set(values[0])
+            else:
+                self.technician.set("")
+        else:
+            self.technician.delete(0, tk.END)
+            self.technician.insert(0, self.settings.get("default_technician", ""))
+
+        self.date_received.delete(0, tk.END)
+        self.date_received.insert(0, today)
+
+        self.time_received.delete(0, tk.END)
+
+        self.date_processed.delete(0, tk.END)
+        self.date_processed.insert(0, today)
+
+        self.time_processed.delete(0, tk.END)
+
+        # Intake
+        self.dropoff_person.delete(0, tk.END)
+        self.received_from.delete(0, tk.END)
+        self.evidence_item_number.delete(0, tk.END)
+
+        self.checked_out_from_evidence.set(True)
+        self.checked_out_datetime.delete(0, tk.END)
+
+        self.returned_to_evidence.set(True)
+        self.returned_datetime.delete(0, tk.END)
+
+        if isinstance(self.evidence_location, ttk.Combobox):
+            values = self.evidence_location["values"]
+            if values:
+                self.evidence_location.set(values[0])
+            else:
+                self.evidence_location.set("")
+        else:
+            self.evidence_location.delete(0, tk.END)
+
+        # Device entry fields and table
+        self.clear_device_fields()
+        self.devices = []
+
+        for item in self.device_tree.get_children():
+            self.device_tree.delete(item)
+
+        # Tool entry fields and table
+        self.clear_tool_fields()
+        self.tools_used = []
+
+        for item in self.tool_tree.get_children():
+            self.tool_tree.delete(item)
+
+        # Processing / Output
+        if PROCESSING_TYPES:
+            self.processing_type.set(PROCESSING_TYPES[0])
+
+        if PROCESSING_STATUSES:
+            self.processing_status.set(PROCESSING_STATUSES[0])
+
+        self.processing_notes.delete(0, tk.END)
+
+        if OUTPUT_TYPES:
+            self.output_type.set(OUTPUT_TYPES[0])
+
+        self.output_filename.delete(0, tk.END)
+        self.output_location.delete(0, tk.END)
+
+        self.reader_report_generated.set(True)
+        self.case_file_generated.set(False)
+
+        self.technician_notes.delete(0, tk.END)
+
+        # Generate/status area
+        self.status_text.delete("1.0", tk.END)
+        self.status_text.insert(
+            tk.END,
+            "Ready for a new acquisition packet."
+        )
+
+        # Return user to the first tab
+        self.notebook.select(self.general_tab)
 
     def build_packet_from_form(self):
         case_number = self.get_widget_value(self.case_number)
