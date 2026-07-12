@@ -446,6 +446,7 @@ def get_or_create_workbook(settings=None):
             "Output Type",
             "Report Generated"
         ])
+        
         style_header_row(sheet)
 
     if "Device Detail" not in workbook.sheetnames:
@@ -503,6 +504,7 @@ def append_to_fpr_tracking(packet, settings=None):
     The workbook contains:
     - Case Summary
     - Device Detail
+    - FPR Case Info
 
     Returns:
         Path: path to fpr_tracking.xlsx
@@ -587,24 +589,28 @@ def append_to_fpr_tracking(packet, settings=None):
             general.get("technician", "")
         ])
 
-    for device in packet.get("devices", []):
-        device_detail.append([
-            general.get("case_number", ""),
-            subject.get("last_name", ""),
-            subject.get("first_name", ""),
-            device.get("device_type", ""),
-            device.get("quantity", ""),
-            device.get("description", ""),
-            device.get("make", ""),
-            device.get("model", ""),
-            device.get("serial", ""),
-            device.get("capacity_size"),
-            device.get("capacity_unit", ""),
-            device.get("storage_each_gb"),
-            device.get("storage_total_gb"),
-            general.get("date_processed", ""),
-            general.get("technician", "")
-        ])
+    fpr_case_info = workbook["FPR Case Info"]
+
+    fpr_case_info.append([
+        general.get("case_number", ""),
+        general.get("agency_case_number", ""),
+        report_info.get("state_local_case_number", general.get("state_local_case_number", "")),
+        subject.get("last_name", ""),
+        subject.get("first_name", ""),
+        report_info.get("case_type", general.get("case_type", "")),
+        general.get("offense_or_incident", ""),
+        report_info.get("city_of_offense", general.get("city_of_offense", "")),
+        report_info.get("state_of_offense", general.get("state_of_offense", "")),
+        report_info.get("country_of_offense", general.get("country_of_offense", "")),
+        report_info.get("exam_start_date", processing.get("exam_start_date", "")),
+        report_info.get("exam_end_date", processing.get("exam_end_date", "")),
+        report_info.get("other_data_analyzed", ""),
+        report_info.get("case_summary", ""),
+        general.get("requesting_investigator", ""),
+        general.get("technician", ""),
+        general.get("date_processed", ""),
+        packet.get("created_at", "")
+    ])
 
     for sheet in workbook.worksheets:
         autofit_columns(sheet)
