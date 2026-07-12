@@ -1,82 +1,20 @@
 import json
-import sys
-from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
 
-
-APP_NAME = "Acquisition Packet Generator"
-APP_VERSION = "0.3"
-
-def get_base_dir():
-    """
-    Return the correct working directory.
-
-    When running from source, use the project folder.
-    When running as a PyInstaller EXE, use the folder containing the EXE.
-    """
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable).parent
-
-    return Path(__file__).parent
-
-
-BASE_DIR = get_base_dir()
-OUTPUT_DIR = BASE_DIR / "output"
-SAVED_PACKETS_DIR = BASE_DIR / "saved_packets"
-SETTINGS_PATH = BASE_DIR / "settings.json"
-FPR_TRACKING_PATH = BASE_DIR / "fpr_tracking.xlsx"
-
-
-DEFAULT_SETTINGS = {
-    "department_name": "Example Police Department",
-    "unit_name": "Digital Evidence Unit",
-    "default_technician": "Example Technician",
-    "common_technicians": [
-        "Example Technician"
-    ],
-    "common_investigators": [
-        "Officer Example",
-        "Detective Example"
-    ],
-    "common_tools": [
-        {
-            "name": "Cellebrite UFED",
-            "version": ""
-        },
-        {
-            "name": "Cellebrite Physical Analyzer",
-            "version": ""
-        },
-        {
-            "name": "Magnet AXIOM",
-            "version": ""
-        },
-        {
-            "name": "FTK Imager",
-            "version": ""
-        },
-        {
-            "name": "GrayKey",
-            "version": ""
-        }
-    ],
-    "common_evidence_locations": [
-        "Evidence Locker",
-        "Property Room",
-        "Digital Evidence Storage"
-    ],
-    "default_scope_statement": (
-        "This documentation records the technical acquisition, extraction, imaging, "
-        "and/or processing steps performed on the listed device or media. The technician "
-        "did not conduct a content examination, investigative review, interpretation of user "
-        "activity, or evidentiary analysis unless specifically stated. Any review, "
-        "interpretation, or investigative conclusions are the responsibility of the assigned "
-        "officer, investigator, or case agent."
-    )
-}
+from settings_service import (
+    APP_NAME,
+    APP_VERSION,
+    BASE_DIR,
+    SETTINGS_PATH,
+    DEFAULT_SETTINGS,
+    get_output_paths,
+    ensure_directories,
+    load_or_create_settings,
+    save_settings,
+)
 
 
 DEVICE_TYPES = [
@@ -127,76 +65,6 @@ STORAGE_UNITS = [
     "MB",
     "Unknown"
 ]
-
-def get_output_paths(settings=None):
-    """
-    Return output paths based on settings.
-
-    If no custom base output directory is set, use BASE_DIR.
-    """
-    if settings is None:
-        settings = load_or_create_settings()
-
-    output_settings = settings.get("output_paths", {})
-
-    base_output_dir = output_settings.get("base_output_dir", "").strip()
-
-    if base_output_dir:
-        base_path = Path(base_output_dir)
-    else:
-        base_path = BASE_DIR
-
-    reports_folder_name = output_settings.get("reports_folder_name", "output")
-    saved_packets_folder_name = output_settings.get("saved_packets_folder_name", "saved_packets")
-    tracking_workbook_name = output_settings.get("tracking_workbook_name", "fpr_tracking.xlsx")
-
-    reports_dir = base_path / reports_folder_name
-    saved_packets_dir = base_path / saved_packets_folder_name
-    tracking_workbook_path = base_path / tracking_workbook_name
-
-    return {
-        "base_path": base_path,
-        "reports_dir": reports_dir,
-        "saved_packets_dir": saved_packets_dir,
-        "tracking_workbook_path": tracking_workbook_path
-    }
-
-def ensure_directories(settings=None):
-    """
-    Create local output folders if they do not already exist.
-    """
-    paths = get_output_paths(settings)
-
-    paths["base_path"].mkdir(exist_ok=True)
-    paths["reports_dir"].mkdir(exist_ok=True)
-    paths["saved_packets_dir"].mkdir(exist_ok=True)
-
-
-def load_or_create_settings():
-    """
-    Load local settings.json.
-
-    If settings.json does not exist, create it from DEFAULT_SETTINGS.
-    settings.json should not be committed to GitHub.
-    """
-    if not SETTINGS_PATH.exists():
-        SETTINGS_PATH.write_text(
-            json.dumps(DEFAULT_SETTINGS, indent=4),
-            encoding="utf-8"
-        )
-
-    with SETTINGS_PATH.open("r", encoding="utf-8") as file:
-        return json.load(file)
-
-
-def save_settings(settings):
-    """
-    Save updated settings to settings.json.
-    """
-    SETTINGS_PATH.write_text(
-        json.dumps(settings, indent=4),
-        encoding="utf-8"
-    )
 
 
 def safe_filename(value):
@@ -459,7 +327,6 @@ def build_txt_report(packet):
 
 def save_packet_outputs(packet, settings=None):
     """
-
     Save the acquisition packet as TXT and JSON.
 
     Returns:
@@ -524,8 +391,8 @@ def get_or_create_workbook(settings=None):
     paths = get_output_paths(settings)
     tracking_path = paths["tracking_workbook_path"]
 
-    if FPR_TRACKING_PATH.exists():
-        workbook = load_workbook(FPR_TRACKING_PATH)
+    if tracking_path.exists():
+        workbook = load_workbook(tracking_path)
     else:
         workbook = Workbook()
         default_sheet = workbook.active
