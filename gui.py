@@ -695,37 +695,49 @@ class AcquisitionPacketGUI:
         self.label(frame, "Exam End Date", 1)
         self.exam_end_date = self.entry(frame, 1, default=today)
 
-        self.label(frame, "Processing Type", 2)
-        self.processing_type = self.combo(frame, PROCESSING_TYPES, 2)
+        self.label(frame, "Total Media Examined", 2)
+        self.total_media_examined = self.entry(frame, 2, width=18)
 
-        self.label(frame, "Processing Status", 3)
-        self.processing_status = self.combo(frame, PROCESSING_STATUSES, 3)
+        self.label(frame, "Hard Drive Credits", 2, column=2)
+        self.hard_drive_credits = self.entry(frame, 2, column=3, width=18)
 
-        self.label(frame, "Processing Notes", 4)
-        self.processing_notes = self.entry(frame, 4, width=70)
+        self.label(frame, "ETech Credits", 3)
+        self.etech_credits = self.entry(frame, 3, width=18)
 
-        self.label(frame, "Output Type", 5)
-        self.output_type = self.combo(frame, OUTPUT_TYPES, 5)
+        self.label(frame, "Media Credits", 3, column=2)
+        self.media_credits = self.entry(frame, 3, column=3, width=18)
 
-        self.label(frame, "Output Filename / Identifier", 6)
-        self.output_filename = self.entry(frame, 6, width=70)
+        self.label(frame, "Processing Type", 4)
+        self.processing_type = self.combo(frame, PROCESSING_TYPES, 4)
 
-        self.label(frame, "Output Location", 7)
-        self.output_location = self.entry(frame, 7, width=70)
+        self.label(frame, "Processing Status", 5)
+        self.processing_status = self.combo(frame, PROCESSING_STATUSES, 5)
 
-        self.reader_report_generated = self.checkbox(frame, "Reader report generated", 8)
+        self.label(frame, "Processing Notes", 6)
+        self.processing_notes = self.entry(frame, 6, width=70)
+
+        self.label(frame, "Output Type", 7)
+        self.output_type = self.combo(frame, OUTPUT_TYPES, 7)
+
+        self.label(frame, "Output Filename / Identifier", 8)
+        self.output_filename = self.entry(frame, 8, width=70)
+
+        self.label(frame, "Output Location", 9)
+        self.output_location = self.entry(frame, 9, width=70)
+
+        self.reader_report_generated = self.checkbox(frame, "Reader report generated", 10)
         self.reader_report_generated.set(True)
 
-        self.case_file_generated = self.checkbox(frame, "Case file generated", 9)
+        self.case_file_generated = self.checkbox(frame, "Case file generated", 11)
 
-        self.label(frame, "Other Data Analyzed", 10)
-        self.other_data_analyzed = self.textbox(frame, 10, width=70, height=4)
+        self.label(frame, "Other Data Analyzed", 12)
+        self.other_data_analyzed = self.textbox(frame, 12, width=70, height=4)
 
-        self.label(frame, "Case Summary", 11)
-        self.case_summary = self.textbox(frame, 11, width=70, height=5)
+        self.label(frame, "Case Summary", 13)
+        self.case_summary = self.textbox(frame, 13, width=70, height=5)
 
-        self.label(frame, "Technician Notes", 12)
-        self.technician_notes = self.textbox(frame, 12, width=70, height=5)
+        self.label(frame, "Technician Notes", 14)
+        self.technician_notes = self.textbox(frame, 14, width=70, height=5)
 
     def build_generate_tab(self):
         frame = self.review_tab
@@ -922,6 +934,11 @@ class AcquisitionPacketGUI:
         self.exam_end_date.delete(0, tk.END)
         self.exam_end_date.insert(0, today)
 
+        self.total_media_examined.delete(0, tk.END)
+        self.hard_drive_credits.delete(0, tk.END)
+        self.etech_credits.delete(0, tk.END)
+        self.media_credits.delete(0, tk.END)
+
         if PROCESSING_TYPES:
             self.processing_type.set(PROCESSING_TYPES[0])
 
@@ -1018,6 +1035,12 @@ class AcquisitionPacketGUI:
                 "output_location": self.get_widget_value(self.output_location),
                 "reader_report_generated": self.reader_report_generated.get(),
                 "case_file_generated": self.case_file_generated.get()
+            },
+            "media_examined_summary": {
+                "total_media_examined": self.get_widget_value(self.total_media_examined),
+                "hard_drive_credits": self.get_widget_value(self.hard_drive_credits),
+                "etech_credits": self.get_widget_value(self.etech_credits),
+                "media_credits": self.get_widget_value(self.media_credits)
             },
             "report_info": {
                 "case_type": self.get_widget_value(self.case_type),
