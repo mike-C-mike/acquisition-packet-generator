@@ -20,12 +20,14 @@ from settings_service import (
 DEVICE_TYPES = [
     "CPU",
     "ETech",
-    "Loose Drive",
     "Mobile Phone",
+    "Loose Drive",
     "Tablet",
     "USB Drive",
     "SD Card",
     "DVR/NVR Storage",
+    "Cloud",
+    "Storage Media",
     "Other"
 ]
 
@@ -64,6 +66,109 @@ STORAGE_UNITS = [
     "TB",
     "MB",
     "Unknown"
+]
+
+
+CASE_SUMMARY_HEADERS = [
+    "Case Number",
+    "Agency Case Number",
+    "Subject Last Name",
+    "Subject First Name",
+    "Offense / Incident",
+    "Requesting Investigator",
+    "Technician",
+    "Date Processed",
+    "CPU Count",
+    "ETech Count",
+    "Mobile Phone Count",
+    "Loose Drive Count",
+    "Tablet Count",
+    "USB Drive Count",
+    "SD Card Count",
+    "DVR/NVR Storage Count",
+    "Cloud Count",
+    "Storage Media Count",
+    "Other Count",
+    "Total Devices",
+    "Total Storage GB",
+    "Total Media Examined",
+    "Hard Drive Credits",
+    "ETech Credits",
+    "Media Credits",
+    "Processing Type",
+    "Processing Status",
+    "Output Type",
+    "Report Generated"
+]
+
+
+DEVICE_DETAIL_HEADERS = [
+    "Case Number",
+    "Subject Last Name",
+    "Subject First Name",
+    "Device Type",
+    "Quantity",
+    "Description",
+    "Make",
+    "Model",
+    "Serial / Identifier",
+    "Storage Size Per Device",
+    "Storage Unit",
+    "Storage GB Per Device",
+    "Storage GB Total",
+    "Volumes Examined",
+    "Volume Scale",
+    "Encrypted",
+    "Decrypted",
+    "Tools Used to Decrypt",
+    "Password Locked",
+    "Password Unlocked",
+    "Services Used to Unlock",
+    "Date Processed",
+    "Technician"
+]
+
+
+FPR_CASE_INFO_HEADERS = [
+    "Case Number",
+    "Agency Case Number",
+    "State / Local Case No.",
+    "Subject Last Name",
+    "Subject First Name",
+    "Case Type",
+    "Offense / Incident",
+    "City of Offense",
+    "State of Offense",
+    "Country of Offense",
+    "Exam Start Date",
+    "Exam End Date",
+    "Other Data Analyzed",
+    "Case Summary",
+    "Requesting Investigator",
+    "Technician",
+    "Date Processed",
+    "Report Generated"
+]
+
+
+FPR_MEDIA_EXAMINED_HEADERS = [
+    "Case Number",
+    "Agency Case Number",
+    "Subject Last Name",
+    "Subject First Name",
+    "Device Type",
+    "Quantity",
+    "Volumes Examined",
+    "Volume Scale",
+    "Encrypted",
+    "Decrypted",
+    "Tools Used to Decrypt",
+    "Password Locked",
+    "Password Unlocked",
+    "Services Used to Unlock",
+    "Technician",
+    "Date Processed",
+    "Report Generated"
 ]
 
 
@@ -114,6 +219,13 @@ def format_storage_gb(value):
     return f"{value:,.2f} GB"
 
 
+def yes_no(value):
+    """
+    Convert booleans to Yes/No for reports and spreadsheets.
+    """
+    return "Yes" if value else "No"
+
+
 def count_devices_by_type(devices):
     """
     Count total device quantities by device type.
@@ -159,8 +271,8 @@ def calculate_media_examined_summary(devices):
     Current working rules:
         Total Media Examined = total quantity of all device/media entries.
         Hard Drive Credits = CPU + Loose Drive + DVR/NVR Storage.
-        ETech Credits = ETech.
-        Media Credits = Mobile Phone + Tablet + USB Drive + SD Card + Other.
+        ETech Credits = ETech + Mobile Phone.
+        Media Credits = Tablet + USB Drive + SD Card + Cloud + Storage Media + Other.
 
     These rules are intentionally centralized here so the GUI does not ask
     the user to enter duplicate credit values manually.
@@ -174,17 +286,17 @@ def calculate_media_examined_summary(devices):
     ]
 
     etech_types = [
-        "ETech"
+        "ETech",
+        "Mobile Phone"
     ]
 
     media_types = [
-        "Mobile Phone",
         "Tablet",
         "USB Drive",
         "SD Card",
-        "Other",
         "Cloud",
-        "Storage Media"
+        "Storage Media",
+        "Other"
     ]
 
     total_media_examined = sum(device.get("quantity", 0) for device in devices)
@@ -342,6 +454,14 @@ def build_txt_report(packet):
                 lines.append(f"  Storage Per Device: {size} {unit}")
 
             lines.append(f"  Total Known Storage: {format_storage_gb(device.get('storage_total_gb'))}")
+            lines.append(f"  Volumes Examined: {device.get('volumes_examined', '')}")
+            lines.append(f"  Volume Scale: {device.get('volume_scale', '')}")
+            lines.append(f"  Encrypted: {yes_no(device.get('encrypted', False))}")
+            lines.append(f"  Decrypted: {yes_no(device.get('decrypted', False))}")
+            lines.append(f"  Tools Used to Decrypt: {device.get('tools_used_to_decrypt', '')}")
+            lines.append(f"  Password Locked: {yes_no(device.get('password_locked', False))}")
+            lines.append(f"  Password Unlocked: {yes_no(device.get('password_unlocked', False))}")
+            lines.append(f"  Services Used to Unlock: {device.get('services_used_to_unlock', '')}")
             lines.append("")
     else:
         lines.append("No device/media entries recorded.")
@@ -488,6 +608,26 @@ def autofit_columns(sheet):
         sheet.column_dimensions[column_letter].width = min(max_length + 2, 50)
 
 
+def ensure_sheet(workbook, sheet_name, headers):
+    """
+    Create a sheet if missing and ensure its header row matches the current schema.
+
+    This lets existing tracking workbooks receive new columns without requiring
+    the user to delete the workbook during development.
+    """
+    if sheet_name not in workbook.sheetnames:
+        sheet = workbook.create_sheet(sheet_name)
+    else:
+        sheet = workbook[sheet_name]
+
+    for column_index, header in enumerate(headers, start=1):
+        sheet.cell(row=1, column=column_index).value = header
+
+    style_header_row(sheet)
+
+    return sheet
+
+
 def get_or_create_workbook(settings=None):
     """
     Open the existing FPR tracking workbook or create a new one.
@@ -502,96 +642,10 @@ def get_or_create_workbook(settings=None):
         default_sheet = workbook.active
         workbook.remove(default_sheet)
 
-    if "Case Summary" not in workbook.sheetnames:
-        sheet = workbook.create_sheet("Case Summary")
-        sheet.append([
-            "Case Number",
-            "Agency Case Number",
-            "Subject Last Name",
-            "Subject First Name",
-            "Offense / Incident",
-            "Requesting Investigator",
-            "Technician",
-            "Date Processed",
-            "CPU Count",
-            "ETech Count",
-            "Loose Drive Count",
-            "Mobile Phone Count",
-            "Tablet Count",
-            "USB Drive Count",
-            "SD Card Count",
-            "DVR/NVR Storage Count",
-            "Other Count",
-            "Total Devices",
-            "Total Storage GB",
-            "Processing Type",
-            "Processing Status",
-            "Output Type",
-            "Report Generated"
-        ])
-        style_header_row(sheet)
-
-    if "Device Detail" not in workbook.sheetnames:
-        sheet = workbook.create_sheet("Device Detail")
-        sheet.append([
-            "Case Number",
-            "Subject Last Name",
-            "Subject First Name",
-            "Device Type",
-            "Quantity",
-            "Description",
-            "Make",
-            "Model",
-            "Serial / Identifier",
-            "Storage Size Per Device",
-            "Storage Unit",
-            "Storage GB Per Device",
-            "Storage GB Total",
-            "Date Processed",
-            "Technician"
-        ])
-        style_header_row(sheet)
-
-    if "FPR Case Info" not in workbook.sheetnames:
-        sheet = workbook.create_sheet("FPR Case Info")
-        sheet.append([
-            "Case Number",
-            "Agency Case Number",
-            "State / Local Case No.",
-            "Subject Last Name",
-            "Subject First Name",
-            "Case Type",
-            "Offense / Incident",
-            "City of Offense",
-            "State of Offense",
-            "Country of Offense",
-            "Exam Start Date",
-            "Exam End Date",
-            "Other Data Analyzed",
-            "Case Summary",
-            "Requesting Investigator",
-            "Technician",
-            "Date Processed",
-            "Report Generated"
-        ])
-        style_header_row(sheet)
-
-    if "FPR Media Examined" not in workbook.sheetnames:
-        sheet = workbook.create_sheet("FPR Media Examined")
-        sheet.append([
-            "Case Number",
-            "Agency Case Number",
-            "Subject Last Name",
-            "Subject First Name",
-            "Total Media Examined",
-            "Hard Drive Credits",
-            "ETech Credits",
-            "Media Credits",
-            "Technician",
-            "Date Processed",
-            "Report Generated"
-        ])
-        style_header_row(sheet)
+    ensure_sheet(workbook, "Case Summary", CASE_SUMMARY_HEADERS)
+    ensure_sheet(workbook, "Device Detail", DEVICE_DETAIL_HEADERS)
+    ensure_sheet(workbook, "FPR Case Info", FPR_CASE_INFO_HEADERS)
+    ensure_sheet(workbook, "FPR Media Examined", FPR_MEDIA_EXAMINED_HEADERS)
 
     return workbook
 
@@ -629,12 +683,14 @@ def append_to_fpr_tracking(packet, settings=None):
     known_summary_types = [
         "CPU",
         "ETech",
-        "Loose Drive",
         "Mobile Phone",
+        "Loose Drive",
         "Tablet",
         "USB Drive",
         "SD Card",
-        "DVR/NVR Storage"
+        "DVR/NVR Storage",
+        "Cloud",
+        "Storage Media"
     ]
 
     other_count = 0
@@ -654,15 +710,21 @@ def append_to_fpr_tracking(packet, settings=None):
         general.get("date_processed", ""),
         counts.get("CPU", 0),
         counts.get("ETech", 0),
-        counts.get("Loose Drive", 0),
         counts.get("Mobile Phone", 0),
+        counts.get("Loose Drive", 0),
         counts.get("Tablet", 0),
         counts.get("USB Drive", 0),
         counts.get("SD Card", 0),
         counts.get("DVR/NVR Storage", 0),
+        counts.get("Cloud", 0),
+        counts.get("Storage Media", 0),
         other_count,
         summary.get("total_devices", 0),
         summary.get("total_storage_gb"),
+        media_examined_summary.get("total_media_examined", 0),
+        media_examined_summary.get("hard_drive_credits", 0),
+        media_examined_summary.get("etech_credits", 0),
+        media_examined_summary.get("media_credits", 0),
         processing.get("processing_type", ""),
         processing.get("processing_status", ""),
         output.get("output_type", ""),
@@ -686,6 +748,14 @@ def append_to_fpr_tracking(packet, settings=None):
             device.get("capacity_unit", ""),
             device.get("storage_each_gb"),
             device.get("storage_total_gb"),
+            device.get("volumes_examined", ""),
+            device.get("volume_scale", ""),
+            yes_no(device.get("encrypted", False)),
+            yes_no(device.get("decrypted", False)),
+            device.get("tools_used_to_decrypt", ""),
+            yes_no(device.get("password_locked", False)),
+            yes_no(device.get("password_unlocked", False)),
+            device.get("services_used_to_unlock", ""),
             general.get("date_processed", ""),
             general.get("technician", "")
         ])
@@ -715,19 +785,26 @@ def append_to_fpr_tracking(packet, settings=None):
 
     fpr_media_examined = workbook["FPR Media Examined"]
 
-    fpr_media_examined.append([
-        general.get("case_number", ""),
-        general.get("agency_case_number", ""),
-        subject.get("last_name", ""),
-        subject.get("first_name", ""),
-        media_examined_summary.get("total_media_examined", 0),
-        media_examined_summary.get("hard_drive_credits", 0),
-        media_examined_summary.get("etech_credits", 0),
-        media_examined_summary.get("media_credits", 0),
-        general.get("technician", ""),
-        general.get("date_processed", ""),
-        packet.get("created_at", "")
-    ])
+    for device in packet.get("devices", []):
+        fpr_media_examined.append([
+            general.get("case_number", ""),
+            general.get("agency_case_number", ""),
+            subject.get("last_name", ""),
+            subject.get("first_name", ""),
+            device.get("device_type", ""),
+            device.get("quantity", ""),
+            device.get("volumes_examined", ""),
+            device.get("volume_scale", ""),
+            yes_no(device.get("encrypted", False)),
+            yes_no(device.get("decrypted", False)),
+            device.get("tools_used_to_decrypt", ""),
+            yes_no(device.get("password_locked", False)),
+            yes_no(device.get("password_unlocked", False)),
+            device.get("services_used_to_unlock", ""),
+            general.get("technician", ""),
+            general.get("date_processed", ""),
+            packet.get("created_at", "")
+        ])
 
     for sheet in workbook.worksheets:
         autofit_columns(sheet)

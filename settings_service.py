@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 APP_NAME = "Acquisition Packet Generator"
-APP_VERSION = "0.4.1"
+APP_VERSION = "0.6"
 
 
 def get_base_dir():

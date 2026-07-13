@@ -19,6 +19,7 @@ from app_core import (
     get_output_paths,
     convert_to_gb,
     format_storage_gb,
+    add_summary_to_packet,
     save_packet_outputs,
     append_to_fpr_tracking,
 )
@@ -39,7 +40,7 @@ class AcquisitionPacketGUI:
     def __init__(self, root):
         self.root = root
         self.root.title(f"{APP_NAME} v{APP_VERSION}")
-        self.root.geometry("900x750")
+        self.root.geometry("1100x800")
         self.root.configure(bg=THEME["bg"])
 
         self.settings = load_or_create_settings()
@@ -96,7 +97,7 @@ class AcquisitionPacketGUI:
 
         subtitle = tk.Label(
             header,
-            text="Early GUI prototype for acquisition documentation and XLSX tracking",
+            text="Device-level acquisition documentation and FPR-aware XLSX tracking",
             bg=THEME["bg"],
             fg=THEME["muted"],
             font=("Segoe UI", 10)
@@ -309,7 +310,10 @@ class AcquisitionPacketGUI:
 
         note = tk.Label(
             frame,
-            text="Add one or more devices/media items. Added entries will appear in the table below.",
+            text=(
+                "Add one or more devices/media items. "
+                "Device-level FPR fields are captured with each device row."
+            ),
             bg=THEME["panel"],
             fg=THEME["muted"],
             font=("Segoe UI", 10, "italic")
@@ -320,28 +324,48 @@ class AcquisitionPacketGUI:
         self.device_type = self.combo(frame, DEVICE_TYPES, 1)
 
         self.label(frame, "Quantity", 2)
-        self.device_quantity = self.entry(frame, 2, default="1")
+        self.device_quantity = self.entry(frame, 2, width=18, default="1")
+
+        self.label(frame, "Volumes Examined", 2, column=2)
+        self.device_volumes_examined = self.entry(frame, 2, column=3, width=18)
 
         self.label(frame, "Description", 3)
         self.device_description = self.entry(frame, 3)
 
+        self.label(frame, "Volume Scale", 3, column=2)
+        self.device_volume_scale = self.entry(frame, 3, column=3, width=18)
+
         self.label(frame, "Make", 4)
         self.device_make = self.entry(frame, 4)
+
+        self.device_encrypted = self.checkbox(frame, "Encrypted", 4, column=2)
 
         self.label(frame, "Model", 5)
         self.device_model = self.entry(frame, 5)
 
+        self.device_decrypted = self.checkbox(frame, "Decrypted", 5, column=2)
+
         self.label(frame, "Serial / Identifier", 6)
         self.device_serial = self.entry(frame, 6)
 
+        self.device_password_locked = self.checkbox(frame, "Password Locked", 6, column=2)
+
         self.label(frame, "Storage Size Per Device", 7)
-        self.device_capacity_size = self.entry(frame, 7)
+        self.device_capacity_size = self.entry(frame, 7, width=18)
+
+        self.device_password_unlocked = self.checkbox(frame, "Password Unlocked", 7, column=2)
 
         self.label(frame, "Storage Unit", 8)
-        self.device_capacity_unit = self.combo(frame, STORAGE_UNITS, 8, default="GB")
+        self.device_capacity_unit = self.combo(frame, STORAGE_UNITS, 8, width=16, default="GB")
+
+        self.label(frame, "Tools Used to Decrypt", 8, column=2)
+        self.device_tools_used_to_decrypt = self.entry(frame, 8, column=3, width=30)
+
+        self.label(frame, "Services Used to Unlock", 9, column=2)
+        self.device_services_used_to_unlock = self.entry(frame, 9, column=3, width=30)
 
         button_frame = tk.Frame(frame, bg=THEME["panel"])
-        button_frame.grid(row=9, column=0, columnspan=4, sticky="w", padx=10, pady=10)
+        button_frame.grid(row=10, column=0, columnspan=4, sticky="w", padx=10, pady=10)
 
         add_button = tk.Button(
             button_frame,
@@ -374,17 +398,17 @@ class AcquisitionPacketGUI:
         remove_button.pack(side="left")
 
         table_frame = tk.Frame(frame, bg=THEME["panel"])
-        table_frame.grid(row=10, column=0, columnspan=4, sticky="nsew", padx=10, pady=10)
+        table_frame.grid(row=11, column=0, columnspan=4, sticky="nsew", padx=10, pady=10)
 
         columns = (
             "type",
             "quantity",
             "description",
-            "make",
-            "model",
             "serial",
             "storage",
-            "total_gb"
+            "volumes",
+            "encrypted",
+            "password_locked"
         )
 
         self.device_tree = ttk.Treeview(
@@ -397,20 +421,20 @@ class AcquisitionPacketGUI:
         self.device_tree.heading("type", text="Type")
         self.device_tree.heading("quantity", text="Qty")
         self.device_tree.heading("description", text="Description")
-        self.device_tree.heading("make", text="Make")
-        self.device_tree.heading("model", text="Model")
         self.device_tree.heading("serial", text="Serial / ID")
         self.device_tree.heading("storage", text="Storage Each")
-        self.device_tree.heading("total_gb", text="Total GB")
+        self.device_tree.heading("volumes", text="Volumes")
+        self.device_tree.heading("encrypted", text="Encrypted")
+        self.device_tree.heading("password_locked", text="PW Locked")
 
         self.device_tree.column("type", width=120)
         self.device_tree.column("quantity", width=50, anchor="center")
-        self.device_tree.column("description", width=160)
-        self.device_tree.column("make", width=100)
-        self.device_tree.column("model", width=100)
+        self.device_tree.column("description", width=220)
         self.device_tree.column("serial", width=130)
         self.device_tree.column("storage", width=100)
-        self.device_tree.column("total_gb", width=100)
+        self.device_tree.column("volumes", width=80, anchor="center")
+        self.device_tree.column("encrypted", width=80, anchor="center")
+        self.device_tree.column("password_locked", width=90, anchor="center")
 
         scrollbar = ttk.Scrollbar(
             table_frame,
@@ -422,7 +446,7 @@ class AcquisitionPacketGUI:
         self.device_tree.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
-        frame.grid_rowconfigure(10, weight=1)
+        frame.grid_rowconfigure(11, weight=1)
         frame.grid_columnconfigure(1, weight=1)
 
     def clear_device_fields(self):
@@ -434,6 +458,16 @@ class AcquisitionPacketGUI:
         self.device_model.delete(0, tk.END)
         self.device_serial.delete(0, tk.END)
         self.device_capacity_size.delete(0, tk.END)
+
+        self.device_volumes_examined.delete(0, tk.END)
+        self.device_volume_scale.delete(0, tk.END)
+        self.device_tools_used_to_decrypt.delete(0, tk.END)
+        self.device_services_used_to_unlock.delete(0, tk.END)
+
+        self.device_encrypted.set(False)
+        self.device_decrypted.set(False)
+        self.device_password_locked.set(False)
+        self.device_password_unlocked.set(False)
 
         if DEVICE_TYPES:
             self.device_type.set(DEVICE_TYPES[0])
@@ -485,7 +519,15 @@ class AcquisitionPacketGUI:
             "capacity_size": capacity_size,
             "capacity_unit": capacity_unit,
             "storage_each_gb": storage_each_gb,
-            "storage_total_gb": storage_total_gb
+            "storage_total_gb": storage_total_gb,
+            "volumes_examined": self.get_widget_value(self.device_volumes_examined),
+            "volume_scale": self.get_widget_value(self.device_volume_scale),
+            "encrypted": self.device_encrypted.get(),
+            "decrypted": self.device_decrypted.get(),
+            "tools_used_to_decrypt": self.get_widget_value(self.device_tools_used_to_decrypt),
+            "password_locked": self.device_password_locked.get(),
+            "password_unlocked": self.device_password_unlocked.get(),
+            "services_used_to_unlock": self.get_widget_value(self.device_services_used_to_unlock)
         }
 
         self.devices.append(device)
@@ -494,9 +536,8 @@ class AcquisitionPacketGUI:
         if capacity_size is not None:
             storage_display = f"{capacity_size:g} {capacity_unit}"
 
-        total_gb_display = "Unknown"
-        if storage_total_gb is not None:
-            total_gb_display = f"{storage_total_gb:,.2f}"
+        encrypted_display = "Yes" if device["encrypted"] else "No"
+        password_locked_display = "Yes" if device["password_locked"] else "No"
 
         self.device_tree.insert(
             "",
@@ -505,11 +546,11 @@ class AcquisitionPacketGUI:
                 device["device_type"],
                 device["quantity"],
                 device["description"],
-                device["make"],
-                device["model"],
                 device["serial"],
                 storage_display,
-                total_gb_display
+                device["volumes_examined"],
+                encrypted_display,
+                password_locked_display
             )
         )
 
@@ -731,8 +772,8 @@ class AcquisitionPacketGUI:
         instructions = tk.Label(
             frame,
             text=(
-                "Click Generate Packet to create the TXT acquisition packet, "
-                "save JSON packet data, and append to the XLSX tracking workbook."
+                "Click Review Packet to check the packet summary before writing "
+                "TXT, JSON, and XLSX output files."
             ),
             bg=THEME["panel"],
             fg=THEME["text"],
@@ -747,8 +788,8 @@ class AcquisitionPacketGUI:
 
         generate_button = tk.Button(
             button_frame,
-            text="Generate Packet",
-            command=self.generate_packet,
+            text="Review Packet",
+            command=self.review_packet,
             bg=THEME["accent"],
             fg=THEME["button_text"],
             activebackground=THEME["accent"],
@@ -811,12 +852,6 @@ class AcquisitionPacketGUI:
         return widget.get().strip()
 
     def clear_form(self):
-        """
-        Clear the current form so a new acquisition packet can be started.
-
-        This does not delete settings, generated reports, saved packets,
-        or the tracking workbook.
-        """
         confirm = messagebox.askyesno(
             "Clear Current Packet",
             "Clear the current form and start a new packet?\n\n"
@@ -1024,7 +1059,220 @@ class AcquisitionPacketGUI:
             "scope_statement": self.settings.get("default_scope_statement", "")
         }
 
+        packet = add_summary_to_packet(packet)
+
         return packet
+
+    def build_review_text(self, packet):
+        general = packet.get("general_info", {})
+        subject = packet.get("subject", {})
+        processing = packet.get("processing", {})
+        output = packet.get("output", {})
+        summary = packet.get("summary", {})
+        media_summary = packet.get("media_examined_summary", {})
+
+        lines = []
+
+        lines.append("REVIEW BEFORE EXPORT")
+        lines.append("=" * 60)
+        lines.append("")
+
+        lines.append("Administrative Summary")
+        lines.append("-" * 30)
+        lines.append(f"Case Number: {general.get('case_number', '')}")
+        lines.append(f"Agency Case Number: {general.get('agency_case_number', '')}")
+        lines.append(f"State / Local Case No.: {general.get('state_local_case_number', '')}")
+        lines.append(f"Case Type: {general.get('case_type', '')}")
+        lines.append(f"Offense / Incident: {general.get('offense_or_incident', '')}")
+        lines.append(f"Subject: {subject.get('last_name', '')}, {subject.get('first_name', '')}")
+        lines.append(f"Requesting Investigator: {general.get('requesting_investigator', '')}")
+        lines.append(f"Technician: {general.get('technician', '')}")
+        lines.append(f"Date Processed: {general.get('date_processed', '')}")
+        lines.append("")
+
+        lines.append("Processing / Output Summary")
+        lines.append("-" * 30)
+        lines.append(f"Exam Start Date: {processing.get('exam_start_date', '')}")
+        lines.append(f"Exam End Date: {processing.get('exam_end_date', '')}")
+        lines.append(f"Processing Type: {processing.get('processing_type', '')}")
+        lines.append(f"Processing Status: {processing.get('processing_status', '')}")
+        lines.append(f"Output Type: {output.get('output_type', '')}")
+        lines.append(f"Output Filename / Identifier: {output.get('output_filename', '')}")
+        lines.append("")
+
+        lines.append("Device / Media Summary")
+        lines.append("-" * 30)
+        lines.append(f"Total Devices: {summary.get('total_devices', 0)}")
+        lines.append(f"Total Known Storage: {format_storage_gb(summary.get('total_storage_gb'))}")
+        lines.append(f"Total Media Examined: {media_summary.get('total_media_examined', 0)}")
+        lines.append(f"Hard Drive Credits: {media_summary.get('hard_drive_credits', 0)}")
+        lines.append(f"ETech Credits: {media_summary.get('etech_credits', 0)}")
+        lines.append(f"Media Credits: {media_summary.get('media_credits', 0)}")
+        lines.append("")
+
+        lines.append("Devices / Media")
+        lines.append("-" * 30)
+
+        devices = packet.get("devices", [])
+
+        if devices:
+            for index, device in enumerate(devices, start=1):
+                lines.append(
+                    f"{index}. {device.get('device_type', '')} | "
+                    f"Qty: {device.get('quantity', '')} | "
+                    f"Desc: {device.get('description', '')} | "
+                    f"Encrypted: {'Yes' if device.get('encrypted', False) else 'No'} | "
+                    f"PW Locked: {'Yes' if device.get('password_locked', False) else 'No'}"
+                )
+        else:
+            lines.append("No device/media entries recorded.")
+
+        lines.append("")
+
+        lines.append("Tools Used")
+        lines.append("-" * 30)
+
+        tools = packet.get("tools_used", [])
+
+        if tools:
+            for index, tool in enumerate(tools, start=1):
+                lines.append(
+                    f"{index}. {tool.get('name', '')} | "
+                    f"Version: {tool.get('version', '')}"
+                )
+        else:
+            lines.append("No tools recorded.")
+
+        lines.append("")
+        lines.append("Confirm Export will write TXT, JSON, and XLSX output files.")
+
+        return "\n".join(lines)
+    
+    def review_packet(self):
+        try:
+            packet = self.build_packet_from_form()
+            review_text = self.build_review_text(packet)
+
+            review_window = tk.Toplevel(self.root)
+            review_window.title("Review Packet Before Export")
+            review_window.geometry("850x700")
+            review_window.configure(bg=THEME["bg"])
+            review_window.grab_set()
+
+            title = tk.Label(
+                review_window,
+                text="Review Packet Before Export",
+                bg=THEME["bg"],
+                fg=THEME["accent"],
+                font=("Segoe UI", 18, "bold")
+            )
+            title.pack(anchor="w", padx=15, pady=(15, 5))
+
+            note = tk.Label(
+                review_window,
+                text=(
+                    "Review the packet summary below. Nothing is written until "
+                    "you click Confirm Export."
+                ),
+                bg=THEME["bg"],
+                fg=THEME["muted"],
+                font=("Segoe UI", 10)
+            )
+            note.pack(anchor="w", padx=15, pady=(0, 10))
+
+            text_frame = tk.Frame(review_window, bg=THEME["bg"])
+            text_frame.pack(fill="both", expand=True, padx=15, pady=10)
+
+            review_textbox = tk.Text(
+                text_frame,
+                bg=THEME["input_bg"],
+                fg=THEME["text"],
+                insertbackground=THEME["text"],
+                relief="flat",
+                wrap="word",
+                font=("Consolas", 10)
+            )
+            review_textbox.insert("1.0", review_text)
+            review_textbox.configure(state="disabled")
+
+            scrollbar = ttk.Scrollbar(
+                text_frame,
+                orient="vertical",
+                command=review_textbox.yview
+            )
+            review_textbox.configure(yscrollcommand=scrollbar.set)
+
+            review_textbox.pack(side="left", fill="both", expand=True)
+            scrollbar.pack(side="right", fill="y")
+
+            button_frame = tk.Frame(review_window, bg=THEME["bg"])
+            button_frame.pack(fill="x", padx=15, pady=(0, 15))
+
+            cancel_button = tk.Button(
+                button_frame,
+                text="Cancel",
+                command=review_window.destroy,
+                bg=THEME["input_bg"],
+                fg=THEME["text"],
+                activebackground=THEME["input_bg"],
+                activeforeground=THEME["text"],
+                relief="flat",
+                padx=18,
+                pady=8,
+                font=("Segoe UI", 10)
+            )
+            cancel_button.pack(side="right", padx=(10, 0))
+
+            export_button = tk.Button(
+                button_frame,
+                text="Confirm Export",
+                command=lambda: self.export_reviewed_packet(packet, review_window),
+                bg=THEME["accent"],
+                fg=THEME["button_text"],
+                activebackground=THEME["accent"],
+                activeforeground=THEME["button_text"],
+                relief="flat",
+                padx=18,
+                pady=8,
+                font=("Segoe UI", 10, "bold")
+            )
+            export_button.pack(side="right")
+
+        except Exception as error:
+            messagebox.showerror("Review Error", str(error))
+
+    def export_reviewed_packet(self, packet, review_window=None):
+        try:
+            txt_path, json_path = save_packet_outputs(packet, self.settings)
+            xlsx_path = append_to_fpr_tracking(packet, self.settings)
+
+            summary = packet.get("summary", {})
+            media_summary = packet.get("media_examined_summary", {})
+
+            message = (
+                "Packet exported successfully.\n\n"
+                f"TXT report:\n{txt_path}\n\n"
+                f"JSON packet:\n{json_path}\n\n"
+                f"XLSX tracking workbook:\n{xlsx_path}\n\n"
+                f"Total devices: {summary.get('total_devices', 0)}\n"
+                f"Total known storage: {format_storage_gb(summary.get('total_storage_gb'))}\n\n"
+                "Derived FPR media values:\n"
+                f"Total media examined: {media_summary.get('total_media_examined', 0)}\n"
+                f"Hard drive credits: {media_summary.get('hard_drive_credits', 0)}\n"
+                f"ETech credits: {media_summary.get('etech_credits', 0)}\n"
+                f"Media credits: {media_summary.get('media_credits', 0)}"
+            )
+
+            self.status_text.delete("1.0", tk.END)
+            self.status_text.insert(tk.END, message)
+
+            if review_window is not None:
+                review_window.destroy()
+
+            messagebox.showinfo("Packet Exported", "Acquisition packet exported successfully.")
+
+        except Exception as error:
+            messagebox.showerror("Export Error", str(error))
 
     def open_settings_window(self):
         settings_window = tk.Toplevel(self.root)
@@ -1336,36 +1584,6 @@ class AcquisitionPacketGUI:
                 "Open Output Folder Error",
                 f"Unable to open output folder:\n\n{error}"
             )
-
-    def generate_packet(self):
-        try:
-            packet = self.build_packet_from_form()
-            txt_path, json_path = save_packet_outputs(packet, self.settings)
-            xlsx_path = append_to_fpr_tracking(packet, self.settings)
-
-            summary = packet.get("summary", {})
-            media_summary = packet.get("media_examined_summary", {})
-
-            message = (
-                "Packet generated successfully.\n\n"
-                f"TXT report:\n{txt_path}\n\n"
-                f"JSON packet:\n{json_path}\n\n"
-                f"XLSX tracking workbook:\n{xlsx_path}\n\n"
-                f"Total devices: {summary.get('total_devices', 0)}\n"
-                f"Total known storage: {format_storage_gb(summary.get('total_storage_gb'))}\n\n"
-                "Derived FPR media values:\n"
-                f"Total media examined: {media_summary.get('total_media_examined', 0)}\n"
-                f"Hard drive credits: {media_summary.get('hard_drive_credits', 0)}\n"
-                f"ETech credits: {media_summary.get('etech_credits', 0)}\n"
-                f"Media credits: {media_summary.get('media_credits', 0)}"
-            )
-
-            self.status_text.delete("1.0", tk.END)
-            self.status_text.insert(tk.END, message)
-            messagebox.showinfo("Packet Generated", "Acquisition packet generated successfully.")
-
-        except Exception as error:
-            messagebox.showerror("Error", str(error))
 
 
 def main():
