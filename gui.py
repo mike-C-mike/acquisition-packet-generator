@@ -18,8 +18,6 @@ from app_core import (
     save_settings,
     get_output_paths,
     convert_to_gb,
-    count_devices_by_type,
-    calculate_total_storage_gb,
     format_storage_gb,
     save_packet_outputs,
     append_to_fpr_tracking,
@@ -49,7 +47,7 @@ class AcquisitionPacketGUI:
 
         self.devices = []
         self.tools_used = []
-        
+
         self.create_styles()
         self.create_layout()
 
@@ -212,7 +210,7 @@ class AcquisitionPacketGUI:
             widget.insert("1.0", default)
 
         return widget
-    
+
     def build_general_tab(self):
         frame = self.general_tab
 
@@ -695,49 +693,37 @@ class AcquisitionPacketGUI:
         self.label(frame, "Exam End Date", 1)
         self.exam_end_date = self.entry(frame, 1, default=today)
 
-        self.label(frame, "Total Media Examined", 2)
-        self.total_media_examined = self.entry(frame, 2, width=18)
+        self.label(frame, "Processing Type", 2)
+        self.processing_type = self.combo(frame, PROCESSING_TYPES, 2)
 
-        self.label(frame, "Hard Drive Credits", 2, column=2)
-        self.hard_drive_credits = self.entry(frame, 2, column=3, width=18)
+        self.label(frame, "Processing Status", 3)
+        self.processing_status = self.combo(frame, PROCESSING_STATUSES, 3)
 
-        self.label(frame, "ETech Credits", 3)
-        self.etech_credits = self.entry(frame, 3, width=18)
+        self.label(frame, "Processing Notes", 4)
+        self.processing_notes = self.entry(frame, 4, width=70)
 
-        self.label(frame, "Media Credits", 3, column=2)
-        self.media_credits = self.entry(frame, 3, column=3, width=18)
+        self.label(frame, "Output Type", 5)
+        self.output_type = self.combo(frame, OUTPUT_TYPES, 5)
 
-        self.label(frame, "Processing Type", 4)
-        self.processing_type = self.combo(frame, PROCESSING_TYPES, 4)
+        self.label(frame, "Output Filename / Identifier", 6)
+        self.output_filename = self.entry(frame, 6, width=70)
 
-        self.label(frame, "Processing Status", 5)
-        self.processing_status = self.combo(frame, PROCESSING_STATUSES, 5)
+        self.label(frame, "Output Location", 7)
+        self.output_location = self.entry(frame, 7, width=70)
 
-        self.label(frame, "Processing Notes", 6)
-        self.processing_notes = self.entry(frame, 6, width=70)
-
-        self.label(frame, "Output Type", 7)
-        self.output_type = self.combo(frame, OUTPUT_TYPES, 7)
-
-        self.label(frame, "Output Filename / Identifier", 8)
-        self.output_filename = self.entry(frame, 8, width=70)
-
-        self.label(frame, "Output Location", 9)
-        self.output_location = self.entry(frame, 9, width=70)
-
-        self.reader_report_generated = self.checkbox(frame, "Reader report generated", 10)
+        self.reader_report_generated = self.checkbox(frame, "Reader report generated", 8)
         self.reader_report_generated.set(True)
 
-        self.case_file_generated = self.checkbox(frame, "Case file generated", 11)
+        self.case_file_generated = self.checkbox(frame, "Case file generated", 9)
 
-        self.label(frame, "Other Data Analyzed", 12)
-        self.other_data_analyzed = self.textbox(frame, 12, width=70, height=4)
+        self.label(frame, "Other Data Analyzed", 10)
+        self.other_data_analyzed = self.textbox(frame, 10, width=70, height=4)
 
-        self.label(frame, "Case Summary", 13)
-        self.case_summary = self.textbox(frame, 13, width=70, height=5)
+        self.label(frame, "Case Summary", 11)
+        self.case_summary = self.textbox(frame, 11, width=70, height=5)
 
-        self.label(frame, "Technician Notes", 14)
-        self.technician_notes = self.textbox(frame, 14, width=70, height=5)
+        self.label(frame, "Technician Notes", 12)
+        self.technician_notes = self.textbox(frame, 12, width=70, height=5)
 
     def build_generate_tab(self):
         frame = self.review_tab
@@ -758,7 +744,7 @@ class AcquisitionPacketGUI:
 
         button_frame = tk.Frame(frame, bg=THEME["panel"])
         button_frame.pack(anchor="w", padx=15, pady=10)
-        
+
         generate_button = tk.Button(
             button_frame,
             text="Generate Packet",
@@ -787,6 +773,7 @@ class AcquisitionPacketGUI:
             pady=10,
             font=("Segoe UI", 11)
         )
+        open_folder_button.pack(side="left", padx=(0, 10))
 
         clear_button = tk.Button(
             button_frame,
@@ -801,9 +788,7 @@ class AcquisitionPacketGUI:
             pady=10,
             font=("Segoe UI", 11)
         )
-        clear_button.pack(side="left", padx=(10, 0))
-
-        open_folder_button.pack(side="left")
+        clear_button.pack(side="left")
 
         self.status_text = tk.Text(
             frame,
@@ -843,7 +828,6 @@ class AcquisitionPacketGUI:
 
         today = datetime.now().strftime("%Y-%m-%d")
 
-        # General Info
         self.case_number.delete(0, tk.END)
         self.agency_case_number.delete(0, tk.END)
         self.state_local_case_number.delete(0, tk.END)
@@ -893,7 +877,6 @@ class AcquisitionPacketGUI:
 
         self.time_processed.delete(0, tk.END)
 
-        # Intake
         self.dropoff_person.delete(0, tk.END)
         self.received_from.delete(0, tk.END)
         self.evidence_item_number.delete(0, tk.END)
@@ -913,31 +896,23 @@ class AcquisitionPacketGUI:
         else:
             self.evidence_location.delete(0, tk.END)
 
-        # Device entry fields and table
         self.clear_device_fields()
         self.devices = []
 
         for item in self.device_tree.get_children():
             self.device_tree.delete(item)
 
-        # Tool entry fields and table
         self.clear_tool_fields()
         self.tools_used = []
 
         for item in self.tool_tree.get_children():
             self.tool_tree.delete(item)
 
-        # Processing / Output
         self.exam_start_date.delete(0, tk.END)
         self.exam_start_date.insert(0, today)
 
         self.exam_end_date.delete(0, tk.END)
         self.exam_end_date.insert(0, today)
-
-        self.total_media_examined.delete(0, tk.END)
-        self.hard_drive_credits.delete(0, tk.END)
-        self.etech_credits.delete(0, tk.END)
-        self.media_credits.delete(0, tk.END)
 
         if PROCESSING_TYPES:
             self.processing_type.set(PROCESSING_TYPES[0])
@@ -960,14 +935,12 @@ class AcquisitionPacketGUI:
         self.case_summary.delete("1.0", tk.END)
         self.technician_notes.delete("1.0", tk.END)
 
-        # Generate/status area
         self.status_text.delete("1.0", tk.END)
         self.status_text.insert(
             tk.END,
             "Ready for a new acquisition packet."
         )
 
-        # Return user to the first tab
         self.notebook.select(self.general_tab)
 
     def build_packet_from_form(self):
@@ -1036,12 +1009,6 @@ class AcquisitionPacketGUI:
                 "reader_report_generated": self.reader_report_generated.get(),
                 "case_file_generated": self.case_file_generated.get()
             },
-            "media_examined_summary": {
-                "total_media_examined": self.get_widget_value(self.total_media_examined),
-                "hard_drive_credits": self.get_widget_value(self.hard_drive_credits),
-                "etech_credits": self.get_widget_value(self.etech_credits),
-                "media_credits": self.get_widget_value(self.media_credits)
-            },
             "report_info": {
                 "case_type": self.get_widget_value(self.case_type),
                 "exam_start_date": self.get_widget_value(self.exam_start_date),
@@ -1057,14 +1024,8 @@ class AcquisitionPacketGUI:
             "scope_statement": self.settings.get("default_scope_statement", "")
         }
 
-        packet["summary"] = {
-            "device_counts": count_devices_by_type(packet["devices"]),
-            "total_devices": sum(device["quantity"] for device in packet["devices"]),
-            "total_storage_gb": calculate_total_storage_gb(packet["devices"])
-        }
-
         return packet
-    
+
     def open_settings_window(self):
         settings_window = tk.Toplevel(self.root)
         settings_window.title("Settings")
@@ -1382,13 +1343,21 @@ class AcquisitionPacketGUI:
             txt_path, json_path = save_packet_outputs(packet, self.settings)
             xlsx_path = append_to_fpr_tracking(packet, self.settings)
 
+            summary = packet.get("summary", {})
+            media_summary = packet.get("media_examined_summary", {})
+
             message = (
                 "Packet generated successfully.\n\n"
                 f"TXT report:\n{txt_path}\n\n"
                 f"JSON packet:\n{json_path}\n\n"
                 f"XLSX tracking workbook:\n{xlsx_path}\n\n"
-                f"Total devices: {packet['summary']['total_devices']}\n"
-                f"Total known storage: {format_storage_gb(packet['summary']['total_storage_gb'])}"
+                f"Total devices: {summary.get('total_devices', 0)}\n"
+                f"Total known storage: {format_storage_gb(summary.get('total_storage_gb'))}\n\n"
+                "Derived FPR media values:\n"
+                f"Total media examined: {media_summary.get('total_media_examined', 0)}\n"
+                f"Hard drive credits: {media_summary.get('hard_drive_credits', 0)}\n"
+                f"ETech credits: {media_summary.get('etech_credits', 0)}\n"
+                f"Media credits: {media_summary.get('media_credits', 0)}"
             )
 
             self.status_text.delete("1.0", tk.END)

@@ -69,7 +69,7 @@ STORAGE_UNITS = [
 
 def safe_filename(value):
     """
-    Convert a case number or other text value into a safer filename.
+    Convert a case number, title, timestamp, or other text value into a safer filename.
     """
     unsafe_chars = ['/', '\\', ':', '*', '?', '"', '<', '>', '|']
     safe_value = str(value).strip()
@@ -152,12 +152,67 @@ def calculate_total_storage_gb(devices):
     return total
 
 
+def calculate_media_examined_summary(devices):
+    """
+    Derive FPR media examined values from the device/media table.
+
+    Current working rules:
+        Total Media Examined = total quantity of all device/media entries.
+        Hard Drive Credits = CPU + Loose Drive + DVR/NVR Storage.
+        ETech Credits = ETech.
+        Media Credits = Mobile Phone + Tablet + USB Drive + SD Card + Other.
+
+    These rules are intentionally centralized here so the GUI does not ask
+    the user to enter duplicate credit values manually.
+    """
+    counts = count_devices_by_type(devices)
+
+    hard_drive_types = [
+        "CPU",
+        "Loose Drive",
+        "DVR/NVR Storage"
+    ]
+
+    etech_types = [
+        "ETech"
+    ]
+
+    media_types = [
+        "Mobile Phone",
+        "Tablet",
+        "USB Drive",
+        "SD Card",
+        "Other",
+        "Cloud",
+        "Storage Media"
+    ]
+
+    total_media_examined = sum(device.get("quantity", 0) for device in devices)
+
+    hard_drive_credits = sum(counts.get(device_type, 0) for device_type in hard_drive_types)
+    etech_credits = sum(counts.get(device_type, 0) for device_type in etech_types)
+    media_credits = sum(counts.get(device_type, 0) for device_type in media_types)
+
+    known_credit_types = set(hard_drive_types + etech_types + media_types)
+
+    for device_type, quantity in counts.items():
+        if device_type not in known_credit_types:
+            media_credits += quantity
+
+    return {
+        "total_media_examined": total_media_examined,
+        "hard_drive_credits": hard_drive_credits,
+        "etech_credits": etech_credits,
+        "media_credits": media_credits
+    }
+
+
 def add_summary_to_packet(packet):
     """
-    Add or refresh the summary section of a packet.
+    Add or refresh calculated summary sections of a packet.
 
-    This is useful because both the terminal app and GUI app
-    can build packet dictionaries, then call this function before export.
+    This makes the packet JSON, TXT output, and XLSX output consistent.
+    The GUI should collect source data. Derived values belong here.
     """
     devices = packet.get("devices", [])
 
@@ -167,6 +222,8 @@ def add_summary_to_packet(packet):
         "total_storage_gb": calculate_total_storage_gb(devices)
     }
 
+    packet["media_examined_summary"] = calculate_media_examined_summary(devices)
+
     return packet
 
 
@@ -174,12 +231,16 @@ def build_txt_report(packet):
     """
     Build the plain text acquisition packet report.
     """
+    packet = add_summary_to_packet(packet)
+
     general = packet.get("general_info", {})
     intake = packet.get("intake_info", {})
     subject = packet.get("subject", {})
     processing = packet.get("processing", {})
     output = packet.get("output", {})
+    report_info = packet.get("report_info", {})
     summary = packet.get("summary", {})
+    media_summary = packet.get("media_examined_summary", {})
 
     department = packet.get("department", {})
     department_name = department.get("department_name", "")
@@ -202,7 +263,12 @@ def build_txt_report(packet):
     lines.append("-" * 30)
     lines.append(f"Case Number: {general.get('case_number', '')}")
     lines.append(f"Agency Case Number: {general.get('agency_case_number', '')}")
+    lines.append(f"State / Local Case No.: {general.get('state_local_case_number', '')}")
+    lines.append(f"Case Type: {general.get('case_type', '')}")
     lines.append(f"Offense / Incident: {general.get('offense_or_incident', '')}")
+    lines.append(f"City of Offense: {general.get('city_of_offense', '')}")
+    lines.append(f"State of Offense: {general.get('state_of_offense', '')}")
+    lines.append(f"Country of Offense: {general.get('country_of_offense', '')}")
     lines.append(f"Subject: {subject.get('last_name', '')}, {subject.get('first_name', '')}")
     lines.append(f"Requesting Officer / Investigator: {general.get('requesting_investigator', '')}")
     lines.append(f"Technician: {general.get('technician', '')}")
@@ -224,10 +290,23 @@ def build_txt_report(packet):
     lines.append(f"Evidence Location / Locker: {intake.get('evidence_location', '')}")
     lines.append("")
 
+    lines.append("Examination Information")
+    lines.append("-" * 30)
+    lines.append(f"Exam Start Date: {processing.get('exam_start_date', '')}")
+    lines.append(f"Exam End Date: {processing.get('exam_end_date', '')}")
+    lines.append(f"Processing Type: {processing.get('processing_type', '')}")
+    lines.append(f"Processing Status: {processing.get('processing_status', '')}")
+    lines.append(f"Processing Notes: {processing.get('processing_notes', '')}")
+    lines.append("")
+
     lines.append("Device / Media Summary")
     lines.append("-" * 30)
     lines.append(f"Total Devices / Media Count: {summary.get('total_devices', 0)}")
     lines.append(f"Total Known Storage: {format_storage_gb(summary.get('total_storage_gb'))}")
+    lines.append(f"Total Media Examined: {media_summary.get('total_media_examined', 0)}")
+    lines.append(f"Hard Drive Credits: {media_summary.get('hard_drive_credits', 0)}")
+    lines.append(f"ETech Credits: {media_summary.get('etech_credits', 0)}")
+    lines.append(f"Media Credits: {media_summary.get('media_credits', 0)}")
     lines.append("")
 
     device_counts = summary.get("device_counts", {})
@@ -283,13 +362,6 @@ def build_txt_report(packet):
 
     lines.append("")
 
-    lines.append("Processing Information")
-    lines.append("-" * 30)
-    lines.append(f"Processing Type: {processing.get('processing_type', '')}")
-    lines.append(f"Processing Status: {processing.get('processing_status', '')}")
-    lines.append(f"Processing Notes: {processing.get('processing_notes', '')}")
-    lines.append("")
-
     lines.append("Generated Output")
     lines.append("-" * 30)
     lines.append(f"Output Type: {output.get('output_type', '')}")
@@ -297,6 +369,16 @@ def build_txt_report(packet):
     lines.append(f"Output Location: {output.get('output_location', '')}")
     lines.append(f"Reader Report Generated: {output.get('reader_report_generated', '')}")
     lines.append(f"Case File Generated: {output.get('case_file_generated', '')}")
+    lines.append("")
+
+    lines.append("Other Data Analyzed")
+    lines.append("-" * 30)
+    lines.append(report_info.get("other_data_analyzed", ""))
+    lines.append("")
+
+    lines.append("Case Summary")
+    lines.append("-" * 30)
+    lines.append(report_info.get("case_summary", ""))
     lines.append("")
 
     lines.append("Technician Notes")
@@ -329,7 +411,7 @@ def save_packet_outputs(packet, settings=None):
     """
     Save the acquisition packet as TXT and JSON.
 
-    Filenames include case number, a case title/offense value, and a timestamp
+    Filenames include case number, case title/offense value, and timestamp
     so repeated exports do not overwrite earlier packet files.
 
     Returns:
@@ -376,6 +458,7 @@ def save_packet_outputs(packet, settings=None):
 
     return txt_path, json_path
 
+
 def style_header_row(sheet):
     """
     Apply basic styling to the first row of an XLSX sheet.
@@ -402,7 +485,7 @@ def autofit_columns(sheet):
             if value is not None:
                 max_length = max(max_length, len(str(value)))
 
-        sheet.column_dimensions[column_letter].width = min(max_length + 2, 40)
+        sheet.column_dimensions[column_letter].width = min(max_length + 2, 50)
 
 
 def get_or_create_workbook(settings=None):
@@ -446,7 +529,6 @@ def get_or_create_workbook(settings=None):
             "Output Type",
             "Report Generated"
         ])
-        
         style_header_row(sheet)
 
     if "Device Detail" not in workbook.sheetnames:
@@ -494,6 +576,23 @@ def get_or_create_workbook(settings=None):
         ])
         style_header_row(sheet)
 
+    if "FPR Media Examined" not in workbook.sheetnames:
+        sheet = workbook.create_sheet("FPR Media Examined")
+        sheet.append([
+            "Case Number",
+            "Agency Case Number",
+            "Subject Last Name",
+            "Subject First Name",
+            "Total Media Examined",
+            "Hard Drive Credits",
+            "ETech Credits",
+            "Media Credits",
+            "Technician",
+            "Date Processed",
+            "Report Generated"
+        ])
+        style_header_row(sheet)
+
     return workbook
 
 
@@ -505,6 +604,7 @@ def append_to_fpr_tracking(packet, settings=None):
     - Case Summary
     - Device Detail
     - FPR Case Info
+    - FPR Media Examined
 
     Returns:
         Path: path to fpr_tracking.xlsx
@@ -520,6 +620,7 @@ def append_to_fpr_tracking(packet, settings=None):
     processing = packet.get("processing", {})
     output = packet.get("output", {})
     report_info = packet.get("report_info", {})
+    media_examined_summary = packet.get("media_examined_summary", {})
     summary = packet.get("summary", {})
     counts = summary.get("device_counts", {})
 
@@ -607,6 +708,22 @@ def append_to_fpr_tracking(packet, settings=None):
         report_info.get("other_data_analyzed", ""),
         report_info.get("case_summary", ""),
         general.get("requesting_investigator", ""),
+        general.get("technician", ""),
+        general.get("date_processed", ""),
+        packet.get("created_at", "")
+    ])
+
+    fpr_media_examined = workbook["FPR Media Examined"]
+
+    fpr_media_examined.append([
+        general.get("case_number", ""),
+        general.get("agency_case_number", ""),
+        subject.get("last_name", ""),
+        subject.get("first_name", ""),
+        media_examined_summary.get("total_media_examined", 0),
+        media_examined_summary.get("hard_drive_credits", 0),
+        media_examined_summary.get("etech_credits", 0),
+        media_examined_summary.get("media_credits", 0),
         general.get("technician", ""),
         general.get("date_processed", ""),
         packet.get("created_at", "")
