@@ -25,6 +25,7 @@ from app_core import (
 )
 
 from docx_exporter import save_docx_report
+from validators import validate_packet
 
 THEME = {
     "bg": "#0B0B0D",
@@ -1064,7 +1065,7 @@ class AcquisitionPacketGUI:
 
         return packet
 
-    def build_review_text(self, packet):
+    def build_review_text(self, packet, warnings=None):
         general = packet.get("general_info", {})
         subject = packet.get("subject", {})
         processing = packet.get("processing", {})
@@ -1145,6 +1146,16 @@ class AcquisitionPacketGUI:
             lines.append("No tools recorded.")
 
         lines.append("")
+
+        if warnings:
+            lines.append("Warnings")
+            lines.append("-" * 30)
+
+            for warning in warnings:
+                lines.append(f"- {warning}")
+
+            lines.append("")
+
         lines.append("Confirm Export will write TXT, JSON, DOCX, and XLSX output files.")
 
         return "\n".join(lines)
@@ -1152,7 +1163,16 @@ class AcquisitionPacketGUI:
     def review_packet(self):
         try:
             packet = self.build_packet_from_form()
-            review_text = self.build_review_text(packet)
+            errors, warnings = validate_packet(packet)
+
+            if errors:
+                messagebox.showerror(
+                    "Packet Validation Error",
+                    "Fix the following before export:\n\n" + "\n".join(errors)
+                )
+                return
+
+            review_text = self.build_review_text(packet, warnings)
 
             review_window = tk.Toplevel(self.root)
             review_window.title("Review Packet Before Export")

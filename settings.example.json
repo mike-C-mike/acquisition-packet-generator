@@ -2,6 +2,15 @@
     "department_name": "Example Police Department",
     "unit_name": "Digital Evidence Unit",
     "default_technician": "Example Technician",
+    "output_paths": {
+        "base_output_dir": "",
+        "reports_folder_name": "output",
+        "saved_packets_folder_name": "saved_packets",
+        "tracking_workbook_name": "fpr_tracking.xlsx"
+    },
+    "report_branding": {
+        "patch_image_path": ""
+    },
     "common_technicians": [
         "Example Technician"
     ],
@@ -24,6 +33,10 @@
         },
         {
             "name": "FTK Imager",
+            "version": ""
+        },
+        {
+            "name": "GrayKey",
             "version": ""
         }
     ],
