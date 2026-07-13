@@ -24,6 +24,7 @@ from app_core import (
     append_to_fpr_tracking,
 )
 
+from docx_exporter import save_docx_report
 
 THEME = {
     "bg": "#0B0B0D",
@@ -1144,7 +1145,7 @@ class AcquisitionPacketGUI:
             lines.append("No tools recorded.")
 
         lines.append("")
-        lines.append("Confirm Export will write TXT, JSON, and XLSX output files.")
+        lines.append("Confirm Export will write TXT, JSON, DOCX, and XLSX output files.")
 
         return "\n".join(lines)
     
@@ -1244,6 +1245,7 @@ class AcquisitionPacketGUI:
     def export_reviewed_packet(self, packet, review_window=None):
         try:
             txt_path, json_path = save_packet_outputs(packet, self.settings)
+            docx_path = save_docx_report(packet, self.settings)
             xlsx_path = append_to_fpr_tracking(packet, self.settings)
 
             summary = packet.get("summary", {})
@@ -1253,6 +1255,7 @@ class AcquisitionPacketGUI:
                 "Packet exported successfully.\n\n"
                 f"TXT report:\n{txt_path}\n\n"
                 f"JSON packet:\n{json_path}\n\n"
+                f"DOCX report:\n{docx_path}\n\n"
                 f"XLSX tracking workbook:\n{xlsx_path}\n\n"
                 f"Total devices: {summary.get('total_devices', 0)}\n"
                 f"Total known storage: {format_storage_gb(summary.get('total_storage_gb'))}\n\n"
@@ -1285,12 +1288,15 @@ class AcquisitionPacketGUI:
         notebook.pack(fill="both", expand=True, padx=15, pady=15)
 
         output_tab = tk.Frame(notebook, bg=THEME["panel"])
+        branding_tab = tk.Frame(notebook, bg=THEME["panel"])
         customization_tab = tk.Frame(notebook, bg=THEME["panel"])
 
         notebook.add(output_tab, text="Output / Storage")
+        notebook.add(branding_tab, text="Report Branding")
         notebook.add(customization_tab, text="Customization / Defaults")
 
         self.build_output_settings_tab(output_tab)
+        self.build_branding_settings_tab(branding_tab)
         self.build_customization_settings_tab(customization_tab)
 
         button_frame = tk.Frame(settings_window, bg=THEME["bg"])
@@ -1405,6 +1411,67 @@ class AcquisitionPacketGUI:
         )
         preview.grid(row=4, column=0, columnspan=3, sticky="w", padx=10, pady=20)
 
+    def build_branding_settings_tab(self, frame):
+        branding = self.settings.get("report_branding", {})
+
+        self.settings_patch_image_path = tk.StringVar(
+            value=branding.get("patch_image_path", "")
+        )
+
+        self.label(frame, "Patch / Logo Image", 0)
+
+        image_entry = tk.Entry(
+            frame,
+            textvariable=self.settings_patch_image_path,
+            width=65,
+            bg=THEME["input_bg"],
+            fg=THEME["text"],
+            insertbackground=THEME["text"],
+            relief="flat"
+        )
+        image_entry.grid(row=0, column=1, sticky="w", padx=10, pady=6)
+
+        browse_button = tk.Button(
+            frame,
+            text="Browse",
+            command=self.browse_patch_image,
+            bg=THEME["accent"],
+            fg=THEME["button_text"],
+            activebackground=THEME["accent"],
+            activeforeground=THEME["button_text"],
+            relief="flat",
+            padx=10
+        )
+        browse_button.grid(row=0, column=2, sticky="w", padx=5, pady=6)
+
+        clear_button = tk.Button(
+            frame,
+            text="Clear",
+            command=lambda: self.settings_patch_image_path.set(""),
+            bg=THEME["input_bg"],
+            fg=THEME["text"],
+            activebackground=THEME["input_bg"],
+            activeforeground=THEME["text"],
+            relief="flat",
+            padx=10
+        )
+        clear_button.grid(row=0, column=3, sticky="w", padx=5, pady=6)
+
+        note = tk.Label(
+            frame,
+            text=(
+                "Optional image placed at the top of DOCX reports.\n\n"
+                "Recommended: PNG\n"
+                "Supported: PNG, JPG, JPEG\n"
+                "SVG/vector support is parked for later. Convert vector artwork to PNG first."
+            ),
+            bg=THEME["panel"],
+            fg=THEME["muted"],
+            justify="left",
+            wraplength=760
+        )
+        note.grid(row=1, column=0, columnspan=4, sticky="w", padx=10, pady=20)
+
     def build_customization_settings_tab(self, frame):
         self.settings_department_name = tk.StringVar(
             value=self.settings.get("department_name", "")
@@ -1507,6 +1574,20 @@ class AcquisitionPacketGUI:
         if folder:
             self.settings_base_output_dir.set(folder)
 
+    def browse_patch_image(self):
+        file_path = filedialog.askopenfilename(
+            title="Select Patch / Logo Image",
+            filetypes=[
+                ("Image files", "*.png *.jpg *.jpeg"),
+                ("PNG files", "*.png"),
+                ("JPEG files", "*.jpg *.jpeg"),
+                ("All files", "*.*")
+            ]
+        )
+
+        if file_path:
+            self.settings_patch_image_path.set(file_path)
+
     def get_textbox_lines(self, textbox):
         raw_text = textbox.get("1.0", tk.END)
         lines = []
@@ -1549,7 +1630,9 @@ class AcquisitionPacketGUI:
             "saved_packets_folder_name": self.settings_saved_packets_folder.get().strip() or "saved_packets",
             "tracking_workbook_name": self.settings_tracking_workbook.get().strip() or "fpr_tracking.xlsx"
         }
-
+        self.settings["report_branding"] = {
+            "patch_image_path": self.settings_patch_image_path.get().strip()
+        }
         self.settings["common_technicians"] = self.get_textbox_lines(self.settings_text_technicians)
         self.settings["common_investigators"] = self.get_textbox_lines(self.settings_text_investigators)
         self.settings["common_evidence_locations"] = self.get_textbox_lines(self.settings_text_locations)

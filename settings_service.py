@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 APP_NAME = "Acquisition Packet Generator"
-APP_VERSION = "0.6"
+APP_VERSION = "0.8.0"
 
 
 def get_base_dir():
@@ -37,6 +37,10 @@ DEFAULT_SETTINGS = {
         "reports_folder_name": "output",
         "saved_packets_folder_name": "saved_packets",
         "tracking_workbook_name": "fpr_tracking.xlsx"
+    },
+
+    "report_branding": {
+        "patch_image_path": ""
     },
 
     "common_technicians": [
