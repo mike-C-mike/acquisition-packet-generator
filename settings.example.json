@@ -1,49 +1,54 @@
 {
-    "department_name": "Example Police Department",
-    "unit_name": "Digital Evidence Unit",
-    "default_technician": "Example Technician",
-    "output_paths": {
-        "base_output_dir": "",
-        "reports_folder_name": "output",
-        "saved_packets_folder_name": "saved_packets",
-        "tracking_workbook_name": "fpr_tracking.xlsx"
+  "suite_name": "ByteCase",
+  "publisher": "Forensics Byte",
+  "department_name": "Example Police Department",
+  "unit_name": "Digital Evidence Unit",
+  "default_technician": "Example Technician",
+  "appearance": {
+    "theme": "system"
+  },
+  "output_paths": {
+    "base_output_dir": "",
+    "reports_folder_name": "reports",
+    "saved_packets_folder_name": "saved_packets",
+    "tracking_folder_name": "tracking",
+    "tracking_workbook_name": "fpr_tracking.xlsx"
+  },
+  "report_branding": {
+    "patch_image_path": ""
+  },
+  "common_technicians": [
+    "Example Technician"
+  ],
+  "common_investigators": [
+    "Officer Example",
+    "Detective Example"
+  ],
+  "common_tools": [
+    {
+      "name": "Cellebrite UFED",
+      "version": ""
     },
-    "report_branding": {
-        "patch_image_path": ""
+    {
+      "name": "Cellebrite Physical Analyzer",
+      "version": ""
     },
-    "common_technicians": [
-        "Example Technician"
-    ],
-    "common_investigators": [
-        "Officer Example",
-        "Detective Example"
-    ],
-    "common_tools": [
-        {
-            "name": "Cellebrite UFED",
-            "version": ""
-        },
-        {
-            "name": "Cellebrite Physical Analyzer",
-            "version": ""
-        },
-        {
-            "name": "Magnet AXIOM",
-            "version": ""
-        },
-        {
-            "name": "FTK Imager",
-            "version": ""
-        },
-        {
-            "name": "GrayKey",
-            "version": ""
-        }
-    ],
-    "common_evidence_locations": [
-        "Evidence Locker",
-        "Property Room",
-        "Digital Evidence Storage"
-    ],
-    "default_scope_statement": "This documentation records the technical acquisition, extraction, imaging, and/or processing steps performed on the listed device or media. The technician did not conduct a content examination, investigative review, interpretation of user activity, or evidentiary analysis unless specifically stated. Any review, interpretation, or investigative conclusions are the responsibility of the assigned officer, investigator, or case agent."
+    {
+      "name": "Magnet AXIOM",
+      "version": ""
+    },
+    {
+      "name": "FTK Imager",
+      "version": ""
+    },
+    {
+      "name": "GrayKey",
+      "version": ""
+    }
+  ],
+  "common_evidence_locations": [
+    "Evidence Locker",
+    "Property Room",
+    "Digital Evidence Storage"
+  ]
 }

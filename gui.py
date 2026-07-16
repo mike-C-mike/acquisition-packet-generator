@@ -5,6 +5,23 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 from datetime import datetime
 
+from bytecase_theme import (
+    THEME_DISPLAY_NAMES,
+    apply_theme,
+    configure_toplevel,
+    display_theme_preference,
+    style_text_widget,
+    theme_preference_from_display,
+)
+from settings_service import (
+    APP_SUBTITLE,
+    SUITE_NAME,
+    PUBLISHER_NAME,
+    PRODUCT_DOMAIN,
+    TOOL_FOLDER_NAME,
+    get_default_output_root,
+)
+
 from app_core import (
     APP_NAME,
     APP_VERSION,
@@ -27,25 +44,45 @@ from app_core import (
 from docx_exporter import save_docx_report
 from validators import validate_packet
 
-THEME = {
-    "bg": "#0B0B0D",
-    "panel": "#151518",
-    "accent": "#C9A227",
-    "text": "#F2F2F2",
-    "muted": "#A8A8A8",
-    "input_bg": "#202024",
-    "button_text": "#0B0B0D"
-}
+THEME = {}
+
+
+def legacy_theme_alias(colors):
+    """Return aliases used by older classic Tk widgets in this app.
+
+    The actual colors come from bytecase_theme.py semantic tokens.
+    This keeps the current layout stable while moving the palette into the
+    shared ByteCase theme system.
+    """
+    return {
+        "bg": colors["app_background"],
+        "panel": colors["panel_background"],
+        "accent": colors["accent"],
+        "text": colors["text_primary"],
+        "muted": colors["text_secondary"],
+        "input_bg": colors["input_background"],
+        "button_text": colors["app_background"],
+        "secondary_button": colors["elevated_surface"],
+        "border": colors["border"],
+        "border_strong": colors["border_strong"],
+        "focus_ring": colors["focus_ring"],
+    }
+
 
 
 class AcquisitionPacketGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title(f"{APP_NAME} v{APP_VERSION}")
-        self.root.geometry("1100x800")
-        self.root.configure(bg=THEME["bg"])
+        self.root.title(f"{APP_NAME} - {APP_SUBTITLE} v{APP_VERSION}")
+        self.root.geometry("1180x820")
 
         self.settings = load_or_create_settings()
+
+        self.theme_state = apply_theme(self.root, self.settings)
+        self.colors = self.theme_state["colors"]
+        global THEME
+        THEME = legacy_theme_alias(self.colors)
+
         ensure_directories(self.settings)
 
         self.devices = []
@@ -55,71 +92,125 @@ class AcquisitionPacketGUI:
         self.create_layout()
 
     def create_styles(self):
-        style = ttk.Style()
-        style.theme_use("clam")
+        self.theme_state = apply_theme(self.root, self.settings)
+        self.colors = self.theme_state["colors"]
+        global THEME
+        THEME = legacy_theme_alias(self.colors)
 
-        style.configure(
-            "TNotebook",
-            background=THEME["bg"],
-            borderwidth=0
-        )
+    def style_text(self, widget):
+        style_text_widget(widget, self.colors)
 
-        style.configure(
-            "TNotebook.Tab",
-            background=THEME["panel"],
-            foreground=THEME["text"],
-            padding=[12, 6]
-        )
+    def refresh_theme(self):
+        """Reapply ByteCase theme to existing widgets without clearing form data."""
+        self.theme_state = apply_theme(self.root, self.settings)
+        self.colors = self.theme_state["colors"]
 
-        style.map(
-            "TNotebook.Tab",
-            background=[("selected", THEME["accent"])],
-            foreground=[("selected", THEME["button_text"])]
-        )
+        global THEME
+        THEME = legacy_theme_alias(self.colors)
 
-        style.configure(
-            "TCombobox",
-            fieldbackground=THEME["input_bg"],
-            background=THEME["input_bg"],
-            foreground=THEME["text"]
-        )
+        self.root.configure(bg=THEME["bg"])
+        self.refresh_widget_colors(self.root)
+
+    def refresh_widget_colors(self, widget):
+        """Best-effort refresh for classic Tk widgets after a theme preference change."""
+        try:
+            widget_class = widget.winfo_class()
+        except tk.TclError:
+            return
+
+        try:
+            if isinstance(widget, tk.Frame):
+                widget.configure(bg=THEME["panel"])
+            elif isinstance(widget, tk.Canvas):
+                widget.configure(background=THEME["panel"], highlightbackground=THEME["border"])
+            elif isinstance(widget, tk.Label):
+                current_text = widget.cget("text")
+                widget.configure(bg=THEME["panel"], fg=THEME["muted"] if current_text and len(str(current_text)) > 60 else THEME["text"])
+            elif isinstance(widget, tk.Entry):
+                widget.configure(
+                    bg=THEME["input_bg"],
+                    fg=THEME["text"],
+                    insertbackground=THEME["text"],
+                    relief="solid",
+                    borderwidth=1,
+                    highlightthickness=1,
+                    highlightbackground=THEME["border_strong"],
+                    highlightcolor=THEME["focus_ring"],
+                )
+            elif isinstance(widget, tk.Text):
+                widget.configure(
+                    bg=THEME["input_bg"],
+                    fg=THEME["text"],
+                    insertbackground=THEME["text"],
+                    relief="solid",
+                    borderwidth=1,
+                    highlightthickness=1,
+                    highlightbackground=THEME["border_strong"],
+                    highlightcolor=THEME["focus_ring"],
+                )
+            elif isinstance(widget, tk.Checkbutton):
+                widget.configure(
+                    bg=THEME["panel"],
+                    fg=THEME["text"],
+                    selectcolor=THEME["input_bg"],
+                    activebackground=THEME["panel"],
+                    activeforeground=THEME["text"],
+                )
+            elif isinstance(widget, tk.Button):
+                text = str(widget.cget("text"))
+                primary_words = ["Add", "Review", "Confirm", "Save", "Export"]
+                is_primary = any(text.startswith(word) for word in primary_words)
+                widget.configure(
+                    bg=THEME["accent"] if is_primary else THEME["secondary_button"],
+                    fg=THEME["button_text"] if is_primary else THEME["text"],
+                    activebackground=THEME["accent"] if is_primary else THEME["secondary_button"],
+                    activeforeground=THEME["button_text"] if is_primary else THEME["text"],
+                )
+        except tk.TclError:
+            pass
+
+        for child in widget.winfo_children():
+            self.refresh_widget_colors(child)
 
     def create_layout(self):
-        header = tk.Frame(self.root, bg=THEME["bg"])
-        header.pack(fill="x", padx=20, pady=(15, 5))
+        header = ttk.Frame(self.root, padding=(14, 12, 14, 6))
+        header.pack(fill="x")
+        header.columnconfigure(0, weight=1)
 
-        title = tk.Label(
+        title = ttk.Label(
             header,
-            text="Acquisition Packet Generator",
-            bg=THEME["bg"],
-            fg=THEME["accent"],
-            font=("Segoe UI", 20, "bold")
+            text=f"{APP_NAME} v{APP_VERSION}",
+            style="Title.TLabel"
         )
-        title.pack(anchor="w")
+        title.grid(row=0, column=0, sticky="w")
 
-        subtitle = tk.Label(
+        subtitle = ttk.Label(
             header,
-            text="Device-level acquisition documentation and FPR-aware XLSX tracking",
-            bg=THEME["bg"],
-            fg=THEME["muted"],
-            font=("Segoe UI", 10)
+            text=f"{APP_SUBTITLE} | Part of {SUITE_NAME} by {PUBLISHER_NAME}",
+            style="Subtitle.TLabel"
         )
-        subtitle.pack(anchor="w")
+        subtitle.grid(row=1, column=0, sticky="w", pady=(4, 0))
 
-        settings_button = tk.Button(
-            header,
+        button_frame = ttk.Frame(header)
+        button_frame.grid(row=0, column=1, rowspan=2, sticky="e")
+
+        ttk.Button(
+            button_frame,
             text="Settings",
             command=self.open_settings_window,
-            bg=THEME["accent"],
-            fg=THEME["button_text"],
-            activebackground=THEME["accent"],
-            activeforeground=THEME["button_text"],
-            relief="flat",
-            padx=14,
-            pady=6,
-            font=("Segoe UI", 10, "bold")
-        )
-        settings_button.pack(anchor="e", pady=(0, 5))
+        ).pack(side="left", padx=(0, 8))
+
+        ttk.Button(
+            button_frame,
+            text="About",
+            command=self.open_about_window,
+        ).pack(side="left", padx=(0, 8))
+
+        ttk.Button(
+            button_frame,
+            text="Open Output Folder",
+            command=self.open_output_folder,
+        ).pack(side="left")
 
         self.notebook = ttk.Notebook(self.root)
         self.notebook.pack(fill="both", expand=True, padx=20, pady=10)
@@ -139,8 +230,43 @@ class AcquisitionPacketGUI:
         self.build_generate_tab()
 
     def create_tab(self, name):
-        frame = tk.Frame(self.notebook, bg=THEME["panel"])
-        self.notebook.add(frame, text=name)
+        outer = ttk.Frame(self.notebook, style="Panel.TFrame")
+        self.notebook.add(outer, text=name)
+
+        canvas = tk.Canvas(
+            outer,
+            background=THEME["panel"],
+            highlightthickness=0,
+            borderwidth=0,
+        )
+        vertical_scroll = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
+        horizontal_scroll = ttk.Scrollbar(outer, orient="horizontal", command=canvas.xview)
+
+        frame = tk.Frame(canvas, bg=THEME["panel"])
+        window_id = canvas.create_window((0, 0), window=frame, anchor="nw")
+
+        def update_scroll_region(event=None):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+            canvas.itemconfigure(window_id, width=max(canvas.winfo_width(), frame.winfo_reqwidth()))
+
+        frame.bind("<Configure>", update_scroll_region)
+        canvas.bind("<Configure>", update_scroll_region)
+
+        def on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        frame.bind("<Enter>", lambda event: canvas.bind_all("<MouseWheel>", on_mousewheel))
+        frame.bind("<Leave>", lambda event: canvas.unbind_all("<MouseWheel>"))
+
+        canvas.configure(yscrollcommand=vertical_scroll.set, xscrollcommand=horizontal_scroll.set)
+
+        canvas.grid(row=0, column=0, sticky="nsew")
+        vertical_scroll.grid(row=0, column=1, sticky="ns")
+        horizontal_scroll.grid(row=1, column=0, sticky="ew")
+
+        outer.rowconfigure(0, weight=1)
+        outer.columnconfigure(0, weight=1)
+
         return frame
 
     def label(self, parent, text, row, column=0):
@@ -161,7 +287,11 @@ class AcquisitionPacketGUI:
             bg=THEME["input_bg"],
             fg=THEME["text"],
             insertbackground=THEME["text"],
-            relief="flat"
+            relief="solid",
+            borderwidth=1,
+            highlightthickness=1,
+            highlightbackground=THEME["border_strong"],
+            highlightcolor=THEME["focus_ring"]
         )
         widget.grid(row=row, column=column, sticky="w", padx=10, pady=6)
 
@@ -204,7 +334,11 @@ class AcquisitionPacketGUI:
             bg=THEME["input_bg"],
             fg=THEME["text"],
             insertbackground=THEME["text"],
-            relief="flat",
+            relief="solid",
+            borderwidth=1,
+            highlightthickness=1,
+            highlightbackground=THEME["border_strong"],
+            highlightcolor=THEME["focus_ring"],
             wrap="word"
         )
         widget.grid(row=row, column=column, sticky="w", padx=10, pady=6)
@@ -840,7 +974,11 @@ class AcquisitionPacketGUI:
             bg=THEME["input_bg"],
             fg=THEME["text"],
             insertbackground=THEME["text"],
-            relief="flat"
+            relief="solid",
+            borderwidth=1,
+            highlightthickness=1,
+            highlightbackground=THEME["border_strong"],
+            highlightcolor=THEME["focus_ring"]
         )
         self.status_text.pack(fill="both", expand=True, padx=15, pady=15)
 
@@ -1177,7 +1315,7 @@ class AcquisitionPacketGUI:
             review_window = tk.Toplevel(self.root)
             review_window.title("Review Packet Before Export")
             review_window.geometry("850x700")
-            review_window.configure(bg=THEME["bg"])
+            configure_toplevel(review_window, self.colors)
             review_window.grab_set()
 
             title = tk.Label(
@@ -1209,7 +1347,11 @@ class AcquisitionPacketGUI:
                 bg=THEME["input_bg"],
                 fg=THEME["text"],
                 insertbackground=THEME["text"],
-                relief="flat",
+                relief="solid",
+                borderwidth=1,
+                highlightthickness=1,
+                highlightbackground=THEME["border_strong"],
+                highlightcolor=THEME["focus_ring"],
                 wrap="word",
                 font=("Consolas", 10)
             )
@@ -1301,21 +1443,24 @@ class AcquisitionPacketGUI:
         settings_window = tk.Toplevel(self.root)
         settings_window.title("Settings")
         settings_window.geometry("850x650")
-        settings_window.configure(bg=THEME["bg"])
+        configure_toplevel(settings_window, self.colors)
         settings_window.grab_set()
 
         notebook = ttk.Notebook(settings_window)
         notebook.pack(fill="both", expand=True, padx=15, pady=15)
 
         output_tab = tk.Frame(notebook, bg=THEME["panel"])
+        appearance_tab = tk.Frame(notebook, bg=THEME["panel"])
         branding_tab = tk.Frame(notebook, bg=THEME["panel"])
         customization_tab = tk.Frame(notebook, bg=THEME["panel"])
 
         notebook.add(output_tab, text="Output / Storage")
+        notebook.add(appearance_tab, text="Appearance")
         notebook.add(branding_tab, text="Report Branding")
         notebook.add(customization_tab, text="Customization / Defaults")
 
         self.build_output_settings_tab(output_tab)
+        self.build_appearance_settings_tab(appearance_tab)
         self.build_branding_settings_tab(branding_tab)
         self.build_customization_settings_tab(customization_tab)
 
@@ -1344,16 +1489,19 @@ class AcquisitionPacketGUI:
             value=output_paths.get("base_output_dir", "")
         )
         self.settings_reports_folder = tk.StringVar(
-            value=output_paths.get("reports_folder_name", "output")
+            value=output_paths.get("reports_folder_name", "reports")
         )
         self.settings_saved_packets_folder = tk.StringVar(
             value=output_paths.get("saved_packets_folder_name", "saved_packets")
+        )
+        self.settings_tracking_folder = tk.StringVar(
+            value=output_paths.get("tracking_folder_name", "tracking")
         )
         self.settings_tracking_workbook = tk.StringVar(
             value=output_paths.get("tracking_workbook_name", "fpr_tracking.xlsx")
         )
 
-        self.label(frame, "Base Output Folder", 0)
+        self.label(frame, "ByteCase Output Root", 0)
         base_entry = tk.Entry(
             frame,
             textvariable=self.settings_base_output_dir,
@@ -1361,7 +1509,11 @@ class AcquisitionPacketGUI:
             bg=THEME["input_bg"],
             fg=THEME["text"],
             insertbackground=THEME["text"],
-            relief="flat"
+            relief="solid",
+            borderwidth=1,
+            highlightthickness=1,
+            highlightbackground=THEME["border_strong"],
+            highlightcolor=THEME["focus_ring"]
         )
         base_entry.grid(row=0, column=1, sticky="w", padx=10, pady=6)
 
@@ -1378,7 +1530,22 @@ class AcquisitionPacketGUI:
         )
         browse_button.grid(row=0, column=2, sticky="w", padx=5, pady=6)
 
-        self.label(frame, "Reports Folder Name", 1)
+        helper = tk.Label(
+            frame,
+            text=(
+                "Leave blank to use the default local ByteCase folder:\n"
+                f"{get_default_output_root()}\n\n"
+                "When a custom root is selected, ByteCase creates case folders directly inside that location:\n"
+                f"<custom root>\\<case_number>\\{TOOL_FOLDER_NAME}\\"
+            ),
+            bg=THEME["panel"],
+            fg=THEME["muted"],
+            justify="left",
+            wraplength=760
+        )
+        helper.grid(row=1, column=0, columnspan=3, sticky="w", padx=10, pady=(4, 14))
+
+        self.label(frame, "Reports Folder Name", 2)
         reports_entry = tk.Entry(
             frame,
             textvariable=self.settings_reports_folder,
@@ -1386,11 +1553,15 @@ class AcquisitionPacketGUI:
             bg=THEME["input_bg"],
             fg=THEME["text"],
             insertbackground=THEME["text"],
-            relief="flat"
+            relief="solid",
+            borderwidth=1,
+            highlightthickness=1,
+            highlightbackground=THEME["border_strong"],
+            highlightcolor=THEME["focus_ring"]
         )
-        reports_entry.grid(row=1, column=1, sticky="w", padx=10, pady=6)
+        reports_entry.grid(row=2, column=1, sticky="w", padx=10, pady=6)
 
-        self.label(frame, "Saved Packets Folder Name", 2)
+        self.label(frame, "Saved Packets Folder Name", 3)
         packets_entry = tk.Entry(
             frame,
             textvariable=self.settings_saved_packets_folder,
@@ -1398,11 +1569,31 @@ class AcquisitionPacketGUI:
             bg=THEME["input_bg"],
             fg=THEME["text"],
             insertbackground=THEME["text"],
-            relief="flat"
+            relief="solid",
+            borderwidth=1,
+            highlightthickness=1,
+            highlightbackground=THEME["border_strong"],
+            highlightcolor=THEME["focus_ring"]
         )
-        packets_entry.grid(row=2, column=1, sticky="w", padx=10, pady=6)
+        packets_entry.grid(row=3, column=1, sticky="w", padx=10, pady=6)
 
-        self.label(frame, "Tracking Workbook Name", 3)
+        self.label(frame, "Tracking Folder Name", 4)
+        tracking_folder_entry = tk.Entry(
+            frame,
+            textvariable=self.settings_tracking_folder,
+            width=45,
+            bg=THEME["input_bg"],
+            fg=THEME["text"],
+            insertbackground=THEME["text"],
+            relief="solid",
+            borderwidth=1,
+            highlightthickness=1,
+            highlightbackground=THEME["border_strong"],
+            highlightcolor=THEME["focus_ring"]
+        )
+        tracking_folder_entry.grid(row=4, column=1, sticky="w", padx=10, pady=6)
+
+        self.label(frame, "Tracking Workbook Name", 5)
         workbook_entry = tk.Entry(
             frame,
             textvariable=self.settings_tracking_workbook,
@@ -1410,26 +1601,61 @@ class AcquisitionPacketGUI:
             bg=THEME["input_bg"],
             fg=THEME["text"],
             insertbackground=THEME["text"],
-            relief="flat"
+            relief="solid",
+            borderwidth=1,
+            highlightthickness=1,
+            highlightbackground=THEME["border_strong"],
+            highlightcolor=THEME["focus_ring"]
         )
-        workbook_entry.grid(row=3, column=1, sticky="w", padx=10, pady=6)
+        workbook_entry.grid(row=5, column=1, sticky="w", padx=10, pady=6)
 
         paths = get_output_paths(self.settings)
 
         preview = tk.Label(
             frame,
             text=(
-                "Current resolved paths:\n"
-                f"Reports: {paths['reports_dir']}\n"
-                f"Saved packets: {paths['saved_packets_dir']}\n"
-                f"Tracking workbook: {paths['tracking_workbook_path']}"
+                "Current resolved root paths without a case number selected:\n"
+                f"Root: {paths['root_path']}\n"
+                f"Base: {paths['base_path']}\n\n"
+                "During export, Acquire writes to:\n"
+                f"<root>\\<case_number>\\{TOOL_FOLDER_NAME}\\"
             ),
             bg=THEME["panel"],
             fg=THEME["muted"],
             justify="left",
             wraplength=760
         )
-        preview.grid(row=4, column=0, columnspan=3, sticky="w", padx=10, pady=20)
+        preview.grid(row=6, column=0, columnspan=3, sticky="w", padx=10, pady=20)
+
+    def build_appearance_settings_tab(self, frame):
+        appearance = self.settings.get("appearance", {})
+        self.settings_theme = tk.StringVar(
+            value=display_theme_preference(appearance.get("theme", "system"))
+        )
+
+        self.label(frame, "Theme", 0)
+        theme_combo = ttk.Combobox(
+            frame,
+            textvariable=self.settings_theme,
+            values=THEME_DISPLAY_NAMES,
+            state="readonly",
+            width=28,
+        )
+        theme_combo.grid(row=0, column=1, sticky="w", padx=10, pady=6)
+
+        note = tk.Label(
+            frame,
+            text=(
+                "Choose Dark, Light, or System Default. The preference is saved in settings.json. "
+                "The main window updates immediately when settings are saved."
+            ),
+            bg=THEME["panel"],
+            fg=THEME["muted"],
+            justify="left",
+            wraplength=760
+        )
+        note.grid(row=1, column=0, columnspan=3, sticky="w", padx=10, pady=20)
+
 
     def build_branding_settings_tab(self, frame):
         branding = self.settings.get("report_branding", {})
@@ -1447,7 +1673,11 @@ class AcquisitionPacketGUI:
             bg=THEME["input_bg"],
             fg=THEME["text"],
             insertbackground=THEME["text"],
-            relief="flat"
+            relief="solid",
+            borderwidth=1,
+            highlightthickness=1,
+            highlightbackground=THEME["border_strong"],
+            highlightcolor=THEME["focus_ring"]
         )
         image_entry.grid(row=0, column=1, sticky="w", padx=10, pady=6)
 
@@ -1511,7 +1741,11 @@ class AcquisitionPacketGUI:
             bg=THEME["input_bg"],
             fg=THEME["text"],
             insertbackground=THEME["text"],
-            relief="flat"
+            relief="solid",
+            borderwidth=1,
+            highlightthickness=1,
+            highlightbackground=THEME["border_strong"],
+            highlightcolor=THEME["focus_ring"]
         )
         self.settings_entry_department.grid(row=0, column=1, sticky="w", padx=10, pady=6)
 
@@ -1523,7 +1757,11 @@ class AcquisitionPacketGUI:
             bg=THEME["input_bg"],
             fg=THEME["text"],
             insertbackground=THEME["text"],
-            relief="flat"
+            relief="solid",
+            borderwidth=1,
+            highlightthickness=1,
+            highlightbackground=THEME["border_strong"],
+            highlightcolor=THEME["focus_ring"]
         )
         self.settings_entry_unit.grid(row=1, column=1, sticky="w", padx=10, pady=6)
 
@@ -1535,7 +1773,11 @@ class AcquisitionPacketGUI:
             bg=THEME["input_bg"],
             fg=THEME["text"],
             insertbackground=THEME["text"],
-            relief="flat"
+            relief="solid",
+            borderwidth=1,
+            highlightthickness=1,
+            highlightbackground=THEME["border_strong"],
+            highlightcolor=THEME["focus_ring"]
         )
         self.settings_entry_default_tech.grid(row=2, column=1, sticky="w", padx=10, pady=6)
 
@@ -1583,7 +1825,11 @@ class AcquisitionPacketGUI:
             bg=THEME["input_bg"],
             fg=THEME["text"],
             insertbackground=THEME["text"],
-            relief="flat"
+            relief="solid",
+            borderwidth=1,
+            highlightthickness=1,
+            highlightbackground=THEME["border_strong"],
+            highlightcolor=THEME["focus_ring"]
         )
         textbox.grid(row=row, column=1, sticky="w", padx=10, pady=6)
         return textbox
@@ -1644,10 +1890,15 @@ class AcquisitionPacketGUI:
         self.settings["unit_name"] = self.settings_unit_name.get().strip()
         self.settings["default_technician"] = self.settings_default_technician.get().strip()
 
+        self.settings["appearance"] = {
+            "theme": theme_preference_from_display(getattr(self, "settings_theme", tk.StringVar(value="System Default")).get())
+        }
+
         self.settings["output_paths"] = {
             "base_output_dir": self.settings_base_output_dir.get().strip(),
-            "reports_folder_name": self.settings_reports_folder.get().strip() or "output",
+            "reports_folder_name": self.settings_reports_folder.get().strip() or "reports",
             "saved_packets_folder_name": self.settings_saved_packets_folder.get().strip() or "saved_packets",
+            "tracking_folder_name": self.settings_tracking_folder.get().strip() or "tracking",
             "tracking_workbook_name": self.settings_tracking_workbook.get().strip() or "fpr_tracking.xlsx"
         }
         self.settings["report_branding"] = {
@@ -1660,20 +1911,95 @@ class AcquisitionPacketGUI:
 
         save_settings(self.settings)
         ensure_directories(self.settings)
+        self.refresh_theme()
 
         messagebox.showinfo(
             "Settings Saved",
-            "Settings saved successfully. Restart the app to refresh dropdowns."
+            "Settings saved successfully. Theme changes have been applied. Restart only if dropdown list values need to be refreshed."
         )
 
         settings_window.destroy()
 
+    def open_about_window(self):
+        about_window = tk.Toplevel(self.root)
+        about_window.title(f"About {APP_NAME}")
+        about_window.geometry("820x640")
+        configure_toplevel(about_window, self.colors)
+        about_window.grab_set()
+
+        frame = ttk.Frame(about_window, padding=14)
+        frame.pack(fill="both", expand=True)
+        frame.columnconfigure(0, weight=1)
+        frame.rowconfigure(1, weight=1)
+
+        ttk.Label(
+            frame,
+            text=f"{APP_NAME} v{APP_VERSION}",
+            style="Title.TLabel"
+        ).grid(row=0, column=0, sticky="w")
+
+        text = tk.Text(frame, wrap="word", height=24)
+        text.grid(row=1, column=0, sticky="nsew", pady=(10, 10))
+        self.style_text(text)
+
+        content = f"""BYTECASE ACQUIRE
+
+{APP_SUBTITLE}
+
+Part of the {SUITE_NAME} toolset by {PUBLISHER_NAME}
+Product domain: {PRODUCT_DOMAIN}
+
+PURPOSE
+
+ByteCase Acquire helps examiners document digital forensic acquisition and extraction work. It records case information, intake details, device/media entries, tools used, processing details, generated outputs, technician notes, and FPR-aware tracking data.
+
+PLATFORM IDEOLOGY
+
+ByteCase tools are designed to bake in best practices, structure, and guidance while preserving enough flexibility for agencies to customize their workflow. The goal is practical examiner-focused documentation that supports repeatability, review, and clearer handoffs between request, acquisition, verification, and later reporting.
+
+WHAT THIS TOOL DOES NOT DO
+
+ByteCase Acquire does not perform forensic acquisition, bypass device security, parse evidence, analyze artifacts, determine evidentiary relevance, or create investigative conclusions. It documents examiner-entered acquisition, extraction, imaging, processing, and output information.
+
+OUTPUT PHILOSOPHY
+
+Default root folder:
+{get_default_output_root()}
+
+Typical Acquire output:
+<ByteCase output root>\\<case_number>\\{TOOL_FOLDER_NAME}\\
+
+When a custom output root is selected, case folders are created directly inside that custom root.
+
+ATTRIBUTION
+
+Created by Matt McBride.
+Published under the Forensics Byte brand.
+
+Suite: {SUITE_NAME}
+Tool: {APP_NAME}
+Domain: {PRODUCT_DOMAIN}
+"""
+        text.insert("1.0", content)
+        text.configure(state="disabled")
+
+        button_frame = ttk.Frame(frame)
+        button_frame.grid(row=2, column=0, sticky="e")
+        ttk.Button(button_frame, text="Close", command=about_window.destroy).pack(side="right")
+
+
     def open_output_folder(self):
         try:
-            paths = get_output_paths(self.settings)
+            case_number = ""
+            try:
+                case_number = self.get_widget_value(self.case_number)
+            except Exception:
+                case_number = ""
+
+            paths = get_output_paths(self.settings, case_number=case_number or None)
             base_path = paths["base_path"]
 
-            ensure_directories(self.settings)
+            ensure_directories(self.settings, case_number=case_number or None)
 
             if sys.platform.startswith("win"):
                 os.startfile(base_path)
