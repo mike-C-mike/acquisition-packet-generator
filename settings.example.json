@@ -1,54 +1,79 @@
 {
-  "suite_name": "ByteCase",
-  "publisher": "Forensics Byte",
-  "department_name": "Example Police Department",
-  "unit_name": "Digital Evidence Unit",
-  "default_technician": "Example Technician",
-  "appearance": {
-    "theme": "system"
-  },
-  "output_paths": {
-    "base_output_dir": "",
-    "reports_folder_name": "reports",
-    "saved_packets_folder_name": "saved_packets",
-    "tracking_folder_name": "tracking",
-    "tracking_workbook_name": "fpr_tracking.xlsx"
-  },
-  "report_branding": {
-    "patch_image_path": ""
-  },
-  "common_technicians": [
-    "Example Technician"
-  ],
-  "common_investigators": [
-    "Officer Example",
-    "Detective Example"
-  ],
-  "common_tools": [
-    {
-      "name": "Cellebrite UFED",
-      "version": ""
+    "suite_name": "ByteCase",
+    "publisher": "Forensics Byte",
+    "department_name": "Example Police Department",
+    "unit_name": "Digital Evidence Unit",
+    "default_technician": "Example Technician",
+    "appearance": {
+        "theme": "system"
     },
-    {
-      "name": "Cellebrite Physical Analyzer",
-      "version": ""
+    "output_paths": {
+        "base_output_dir": "",
+        "reports_folder_name": "reports",
+        "saved_packets_folder_name": "saved_packets",
+        "tracking_folder_name": "tracking",
+        "tracking_workbook_name": "fpr_tracking.xlsx",
+        "attachments_folder_name": "attachments",
+        "device_photos_folder_name": "device_photos",
+        "lab_statistics_folder_name": "lab_statistics"
     },
-    {
-      "name": "Magnet AXIOM",
-      "version": ""
+    "report_branding": {
+        "patch_image_path": ""
     },
-    {
-      "name": "FTK Imager",
-      "version": ""
+    "common_technicians": [
+        "Example Technician"
+    ],
+    "common_investigators": [
+        "Officer Example",
+        "Detective Example"
+    ],
+    "common_tools": [
+        {
+            "name": "Cellebrite UFED",
+            "version": ""
+        },
+        {
+            "name": "Cellebrite Physical Analyzer",
+            "version": ""
+        },
+        {
+            "name": "Magnet AXIOM",
+            "version": ""
+        },
+        {
+            "name": "FTK Imager",
+            "version": ""
+        },
+        {
+            "name": "GrayKey",
+            "version": ""
+        }
+    ],
+    "common_evidence_locations": [
+        "Evidence Locker",
+        "Property Room",
+        "Digital Evidence Storage"
+    ],
+    "common_storage_locations": [
+        "Evidence Locker",
+        "Property Room",
+        "Digital Evidence Storage",
+        "Temporary Processing Shelf",
+        "Secure Lab Cabinet"
+    ],
+    "common_delivery_conditions": [
+        "Good / No visible damage",
+        "Damaged",
+        "Powered on",
+        "Powered off",
+        "Wet / liquid exposure",
+        "Broken screen",
+        "Unknown"
+    ],
+    "preset_defaults": {
+        "agency_dropping_item_off": "",
+        "device_storage_location": "",
+        "condition_delivered": ""
     },
-    {
-      "name": "GrayKey",
-      "version": ""
-    }
-  ],
-  "common_evidence_locations": [
-    "Evidence Locker",
-    "Property Room",
-    "Digital Evidence Storage"
-  ]
+    "default_scope_statement": "This documentation records the technical acquisition, extraction, imaging, and/or processing steps performed on the listed device or media. The technician did not conduct a content examination, investigative review, interpretation of user activity, or evidentiary analysis unless specifically stated. Any review, interpretation, or investigative conclusions are the responsibility of the assigned officer, investigator, or case agent."
 }

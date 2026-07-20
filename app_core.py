@@ -1,4 +1,8 @@
 import json
+import csv
+import shutil
+from datetime import datetime
+from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment
@@ -16,6 +20,7 @@ from settings_service import (
     SETTINGS_PATH,
     DEFAULT_SETTINGS,
     get_output_paths,
+    get_output_root,
     ensure_directories,
     load_or_create_settings,
     save_settings,
@@ -77,12 +82,14 @@ STORAGE_UNITS = [
 CASE_SUMMARY_HEADERS = [
     "Case Number",
     "Agency Case Number",
+    "Agency Dropping Item Off",
     "Subject Last Name",
     "Subject First Name",
     "Offense / Incident",
     "Requesting Investigator",
     "Technician",
     "Date Processed",
+    "Date Received",
     "CPU Count",
     "ETech Count",
     "Mobile Phone Count",
@@ -129,7 +136,12 @@ DEVICE_DETAIL_HEADERS = [
     "Password Locked",
     "Password Unlocked",
     "Services Used to Unlock",
+    "Where Device Stored",
+    "Condition Delivered",
+    "Device Photo",
+    "Copied Device Photo",
     "Date Processed",
+    "Date Received",
     "Technician"
 ]
 
@@ -137,6 +149,7 @@ DEVICE_DETAIL_HEADERS = [
 FPR_CASE_INFO_HEADERS = [
     "Case Number",
     "Agency Case Number",
+    "Agency Dropping Item Off",
     "State / Local Case No.",
     "Subject Last Name",
     "Subject First Name",
@@ -152,6 +165,7 @@ FPR_CASE_INFO_HEADERS = [
     "Requesting Investigator",
     "Technician",
     "Date Processed",
+    "Date Received",
     "Report Generated"
 ]
 
@@ -159,6 +173,7 @@ FPR_CASE_INFO_HEADERS = [
 FPR_MEDIA_EXAMINED_HEADERS = [
     "Case Number",
     "Agency Case Number",
+    "Agency Dropping Item Off",
     "Subject Last Name",
     "Subject First Name",
     "Device Type",
@@ -173,6 +188,7 @@ FPR_MEDIA_EXAMINED_HEADERS = [
     "Services Used to Unlock",
     "Technician",
     "Date Processed",
+    "Date Received",
     "Report Generated"
 ]
 
@@ -229,6 +245,121 @@ def yes_no(value):
     Convert booleans to Yes/No for reports and spreadsheets.
     """
     return "Yes" if value else "No"
+
+
+
+
+def is_supported_image_path(path_text):
+    suffix = Path(str(path_text or "")).suffix.lower()
+    return suffix in {".png", ".jpg", ".jpeg", ".bmp", ".gif", ".tif", ".tiff"}
+
+
+def normalize_device_photos(device):
+    """Return a normalized list of device photo dictionaries.
+
+    v0.9.2 stored a single optional path in device_photo_path. v0.9.3 stores
+    multiple labeled images in device_photos while preserving the legacy fields
+    for older JSON compatibility.
+    """
+    photos = device.get("device_photos", [])
+    if not isinstance(photos, list):
+        photos = []
+
+    normalized = []
+    for index, photo in enumerate(photos, start=1):
+        if isinstance(photo, dict):
+            path_text = str(photo.get("path", "")).strip()
+            label = str(photo.get("label", "")).strip()
+        else:
+            path_text = str(photo).strip()
+            label = ""
+
+        if path_text:
+            normalized.append({
+                "label": label or f"Photo {index}",
+                "path": path_text,
+                "copied_path": str(photo.get("copied_path", "")).strip() if isinstance(photo, dict) else "",
+                "copy_note": str(photo.get("copy_note", "")).strip() if isinstance(photo, dict) else ""
+            })
+
+    legacy_path = str(device.get("device_photo_path", "")).strip()
+    if legacy_path and not any(str(photo.get("path", "")).strip() == legacy_path for photo in normalized):
+        normalized.append({
+            "label": "Photo 1",
+            "path": legacy_path,
+            "copied_path": str(device.get("device_photo_copied_path", "")).strip(),
+            "copy_note": str(device.get("device_photo_copy_note", "")).strip()
+        })
+
+    return normalized
+
+
+def copy_device_photos(packet, settings=None):
+    """Copy labeled device photos into the Acquire packet attachments folder.
+
+    Missing or unsupported files are non-blocking because acquisition
+    documentation should still export even if optional photos are unavailable.
+    """
+    general = packet.get("general_info", {})
+    case_number = general.get("case_number", "UNKNOWN_CASE")
+    paths = get_output_paths(settings, case_number=case_number)
+    photo_dir = paths["device_photos_dir"]
+    photo_dir.mkdir(parents=True, exist_ok=True)
+
+    for device_index, device in enumerate(packet.get("devices", []), start=1):
+        photos = normalize_device_photos(device)
+        copied_photos = []
+
+        for photo_index, photo in enumerate(photos, start=1):
+            label = str(photo.get("label", "")).strip() or f"Photo {photo_index}"
+            original = str(photo.get("path", "")).strip()
+
+            record = {
+                "label": label,
+                "path": original,
+                "copied_path": "",
+                "copy_note": ""
+            }
+
+            if not original:
+                copied_photos.append(record)
+                continue
+
+            source = Path(original)
+            record["path"] = str(source)
+
+            if not source.exists():
+                record["copy_note"] = "Original photo path was not found during export."
+                copied_photos.append(record)
+                continue
+
+            if not is_supported_image_path(source):
+                record["copy_note"] = "Photo was not copied because the file type is not a supported image type."
+                copied_photos.append(record)
+                continue
+
+            serial = safe_filename(device.get("serial", "") or f"device_{device_index:03d}")
+            device_type = safe_filename(device.get("device_type", "device") or "device")
+            label_name = safe_filename(label or f"photo_{photo_index:02d}")
+            destination = photo_dir / f"device_{device_index:03d}_{device_type}_{serial}_{photo_index:02d}_{label_name}{source.suffix.lower()}"
+
+            try:
+                shutil.copy2(source, destination)
+                record["copied_path"] = str(destination)
+            except Exception as error:
+                record["copy_note"] = f"Unable to copy device photo: {error}"
+
+            copied_photos.append(record)
+
+        device["device_photos"] = copied_photos
+
+        # Preserve v0.9.2 fields for old templates/exports and existing user expectations.
+        first_photo = copied_photos[0] if copied_photos else {}
+        device["device_photo_path"] = first_photo.get("path", "")
+        device["device_photo_copied_path"] = first_photo.get("copied_path", "")
+        device["device_photo_copy_note"] = first_photo.get("copy_note", "")
+
+    return packet
 
 
 def count_devices_by_type(devices):
@@ -400,6 +531,7 @@ def build_txt_report(packet):
 
     lines.append("Intake Information")
     lines.append("-" * 30)
+    lines.append(f"Agency Dropping Item Off: {intake.get('agency_dropping_item_off', '')}")
     lines.append(f"Drop-off Person: {intake.get('dropoff_person', '')}")
     lines.append(f"Received From: {intake.get('received_from', '')}")
     lines.append(f"Evidence Item Number: {intake.get('evidence_item_number', '')}")
@@ -416,7 +548,13 @@ def build_txt_report(packet):
     lines.append(f"Exam End Date: {processing.get('exam_end_date', '')}")
     lines.append(f"Processing Type: {processing.get('processing_type', '')}")
     lines.append(f"Processing Status: {processing.get('processing_status', '')}")
-    lines.append(f"Processing Notes: {processing.get('processing_notes', '')}")
+    lines.append("Processing / Acquisition Narrative:")
+    notes_text = processing.get("processing_notes", "")
+    if notes_text:
+        for note_line in str(notes_text).splitlines():
+            lines.append(f"  {note_line}")
+    else:
+        lines.append("  ")
     lines.append("")
 
     lines.append("Device / Media Summary")
@@ -470,6 +608,19 @@ def build_txt_report(packet):
             lines.append(f"  Password Locked: {yes_no(device.get('password_locked', False))}")
             lines.append(f"  Password Unlocked: {yes_no(device.get('password_unlocked', False))}")
             lines.append(f"  Services Used to Unlock: {device.get('services_used_to_unlock', '')}")
+            lines.append(f"  Where Device Stored: {device.get('device_storage_location', '')}")
+            lines.append(f"  Condition Delivered: {device.get('condition_delivered', '')}")
+            photos = normalize_device_photos(device)
+            if photos:
+                lines.append("  Device Photos:")
+                for photo_index, photo in enumerate(photos, start=1):
+                    lines.append(f"    {photo_index}. {photo.get('label', '')}")
+                    lines.append(f"       Original Path: {photo.get('path', '')}")
+                    lines.append(f"       Copied Path: {photo.get('copied_path', '')}")
+                    if photo.get("copy_note"):
+                        lines.append(f"       Note: {photo.get('copy_note', '')}")
+            else:
+                lines.append("  Device Photos: None recorded")
             lines.append("")
     else:
         lines.append("No device/media entries recorded.")
@@ -546,6 +697,7 @@ def save_packet_outputs(packet, settings=None):
         tuple: (txt_path, json_path)
     """
     packet = add_summary_to_packet(packet)
+    packet = copy_device_photos(packet, settings=settings)
 
     general = packet.get("general_info", {})
     case_number = general.get("case_number", "UNKNOWN_CASE")
@@ -671,6 +823,7 @@ def append_to_fpr_tracking(packet, settings=None):
         Path: path to fpr_tracking.xlsx
     """
     packet = add_summary_to_packet(packet)
+    packet = copy_device_photos(packet, settings=settings)
 
     general = packet.get("general_info", {})
     case_number = general.get("case_number", "UNKNOWN_CASE")
@@ -710,12 +863,14 @@ def append_to_fpr_tracking(packet, settings=None):
     case_summary.append([
         general.get("case_number", ""),
         general.get("agency_case_number", ""),
+        packet.get("intake_info", {}).get("agency_dropping_item_off", ""),
         subject.get("last_name", ""),
         subject.get("first_name", ""),
         general.get("offense_or_incident", ""),
         general.get("requesting_investigator", ""),
         general.get("technician", ""),
         general.get("date_processed", ""),
+        general.get("date_received", ""),
         counts.get("CPU", 0),
         counts.get("ETech", 0),
         counts.get("Mobile Phone", 0),
@@ -764,6 +919,10 @@ def append_to_fpr_tracking(packet, settings=None):
             yes_no(device.get("password_locked", False)),
             yes_no(device.get("password_unlocked", False)),
             device.get("services_used_to_unlock", ""),
+            device.get("device_storage_location", ""),
+            device.get("condition_delivered", ""),
+            "; ".join(f"{photo.get('label', '')}: {photo.get('path', '')}" for photo in normalize_device_photos(device)),
+            "; ".join(f"{photo.get('label', '')}: {photo.get('copied_path', '')}" for photo in normalize_device_photos(device)),
             general.get("date_processed", ""),
             general.get("technician", "")
         ])
@@ -773,6 +932,7 @@ def append_to_fpr_tracking(packet, settings=None):
     fpr_case_info.append([
         general.get("case_number", ""),
         general.get("agency_case_number", ""),
+        packet.get("intake_info", {}).get("agency_dropping_item_off", ""),
         report_info.get("state_local_case_number", general.get("state_local_case_number", "")),
         subject.get("last_name", ""),
         subject.get("first_name", ""),
@@ -827,3 +987,134 @@ def append_to_fpr_tracking(packet, settings=None):
         ) from error
 
     return paths["tracking_workbook_path"]
+
+def parse_date_value(value):
+    text = str(value or "").strip()
+    if not text:
+        return None
+    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%Y/%m/%d"):
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            pass
+    return None
+
+
+def iter_saved_packet_json(settings=None):
+    root = get_output_root(settings)
+    pattern = f"*/{TOOL_FOLDER_NAME}/saved_packets/*.json"
+    yield from root.glob(pattern)
+
+
+def build_lab_statistics(settings=None, start_date="", end_date=""):
+    start = parse_date_value(start_date)
+    end = parse_date_value(end_date)
+
+    rows = []
+    totals = {
+        "packets": 0,
+        "devices": 0,
+        "known_storage_gb": 0.0,
+    }
+
+    for json_path in iter_saved_packet_json(settings):
+        try:
+            packet = json.loads(json_path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+
+        packet = add_summary_to_packet(packet)
+        general = packet.get("general_info", {})
+        subject = packet.get("subject", {})
+        intake = packet.get("intake_info", {})
+        processing = packet.get("processing", {})
+        output = packet.get("output", {})
+        summary = packet.get("summary", {})
+
+        processed = parse_date_value(general.get("date_processed")) or parse_date_value(processing.get("exam_end_date")) or parse_date_value(general.get("date_received"))
+        if start and processed and processed < start:
+            continue
+        if end and processed and processed > end:
+            continue
+        if start and not processed:
+            continue
+        if end and not processed:
+            continue
+
+        device_count = int(summary.get("total_devices", 0) or 0)
+        storage = summary.get("total_storage_gb")
+        storage_value = float(storage) if storage is not None else 0.0
+
+        totals["packets"] += 1
+        totals["devices"] += device_count
+        totals["known_storage_gb"] += storage_value
+
+        rows.append({
+            "Date Processed": general.get("date_processed", ""),
+            "Date Received": general.get("date_received", ""),
+            "Case Number": general.get("case_number", ""),
+            "Agency Case Number": general.get("agency_case_number", ""),
+            "Agency Dropping Item Off": intake.get("agency_dropping_item_off", ""),
+            "Subject Last Name": subject.get("last_name", ""),
+            "Subject First Name": subject.get("first_name", ""),
+            "Technician": general.get("technician", ""),
+            "Processing Type": processing.get("processing_type", ""),
+            "Processing Status": processing.get("processing_status", ""),
+            "Output Type": output.get("output_type", ""),
+            "Device Count": device_count,
+            "Known Storage GB": storage if storage is not None else "",
+            "Packet JSON": str(json_path),
+        })
+
+    return rows, totals
+
+
+def export_lab_statistics(settings=None, start_date="", end_date=""):
+    rows, totals = build_lab_statistics(settings=settings, start_date=start_date, end_date=end_date)
+    ensure_directories(settings)
+    paths = get_output_paths(settings)
+    stats_dir = paths["lab_statistics_dir"]
+    stats_dir.mkdir(parents=True, exist_ok=True)
+
+    timestamp = safe_filename(datetime.now().strftime("%Y-%m-%d_%H-%M-%S"))
+    suffix = "lab_statistics"
+    if start_date or end_date:
+        suffix = f"lab_statistics_{safe_filename(start_date or 'start')}_to_{safe_filename(end_date or 'end')}"
+
+    csv_path = stats_dir / f"{timestamp}_{suffix}.csv"
+    xlsx_path = stats_dir / f"{timestamp}_{suffix}.xlsx"
+
+    headers = [
+        "Date Processed", "Date Received", "Case Number", "Agency Case Number",
+        "Agency Dropping Item Off", "Subject Last Name", "Subject First Name",
+        "Technician", "Processing Type", "Processing Status", "Output Type",
+        "Device Count", "Known Storage GB", "Packet JSON"
+    ]
+
+    with csv_path.open("w", newline="", encoding="utf-8") as file:
+        writer = csv.DictWriter(file, fieldnames=headers)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(row)
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Lab Statistics"
+    sheet.append(headers)
+    for row in rows:
+        sheet.append([row.get(header, "") for header in headers])
+
+    totals_sheet = workbook.create_sheet("Summary")
+    totals_sheet.append(["Metric", "Value"])
+    totals_sheet.append(["Packets", totals.get("packets", 0)])
+    totals_sheet.append(["Devices", totals.get("devices", 0)])
+    totals_sheet.append(["Known Storage GB", totals.get("known_storage_gb", 0.0)])
+    totals_sheet.append(["Start Date Filter", start_date])
+    totals_sheet.append(["End Date Filter", end_date])
+
+    for ws in workbook.worksheets:
+        style_header_row(ws)
+        autofit_columns(ws)
+
+    workbook.save(xlsx_path)
+    return csv_path, xlsx_path, totals

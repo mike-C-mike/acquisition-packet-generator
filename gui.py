@@ -39,6 +39,7 @@ from app_core import (
     add_summary_to_packet,
     save_packet_outputs,
     append_to_fpr_tracking,
+    export_lab_statistics,
 )
 
 from docx_exporter import save_docx_report
@@ -75,6 +76,7 @@ class AcquisitionPacketGUI:
         self.root = root
         self.root.title(f"{APP_NAME} - {APP_SUBTITLE} v{APP_VERSION}")
         self.root.geometry("1180x820")
+        self.root.minsize(1080, 720)
 
         self.settings = load_or_create_settings()
 
@@ -87,6 +89,8 @@ class AcquisitionPacketGUI:
 
         self.devices = []
         self.tools_used = []
+        self.current_device_photos = []
+        self.current_device_photo_summary = tk.StringVar(value="No photos added")
 
         self.create_styles()
         self.create_layout()
@@ -269,6 +273,40 @@ class AcquisitionPacketGUI:
 
         return frame
 
+    def create_scrollable_settings_tab(self, notebook, name):
+        outer = tk.Frame(notebook, bg=THEME["panel"])
+        notebook.add(outer, text=name)
+
+        canvas = tk.Canvas(outer, background=THEME["panel"], highlightthickness=0, borderwidth=0)
+        vertical_scroll = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
+        horizontal_scroll = ttk.Scrollbar(outer, orient="horizontal", command=canvas.xview)
+        frame = tk.Frame(canvas, bg=THEME["panel"])
+        window_id = canvas.create_window((0, 0), window=frame, anchor="nw")
+
+        def update_scroll_region(event=None):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+            canvas.itemconfigure(window_id, width=max(canvas.winfo_width(), frame.winfo_reqwidth()))
+
+        frame.bind("<Configure>", update_scroll_region)
+        canvas.bind("<Configure>", update_scroll_region)
+
+        def on_mousewheel(event):
+            try:
+                canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+            except tk.TclError:
+                pass
+
+        frame.bind("<Enter>", lambda event: canvas.bind_all("<MouseWheel>", on_mousewheel))
+        frame.bind("<Leave>", lambda event: canvas.unbind_all("<MouseWheel>"))
+
+        canvas.configure(yscrollcommand=vertical_scroll.set, xscrollcommand=horizontal_scroll.set)
+        canvas.grid(row=0, column=0, sticky="nsew")
+        vertical_scroll.grid(row=0, column=1, sticky="ns")
+        horizontal_scroll.grid(row=1, column=0, sticky="ew")
+        outer.rowconfigure(0, weight=1)
+        outer.columnconfigure(0, weight=1)
+        return frame
+
     def label(self, parent, text, row, column=0):
         widget = tk.Label(
             parent,
@@ -412,34 +450,56 @@ class AcquisitionPacketGUI:
 
     def build_intake_tab(self):
         frame = self.intake_tab
+        presets = self.settings.get("preset_defaults", {})
 
-        self.label(frame, "Drop-off Person", 0)
-        self.dropoff_person = self.entry(frame, 0)
+        self.label(frame, "Agency Dropping Item Off", 0)
+        self.agency_dropping_item_off = self.entry(
+            frame,
+            0,
+            default=presets.get("agency_dropping_item_off", "")
+        )
 
-        self.label(frame, "Received From", 1)
-        self.received_from = self.entry(frame, 1)
+        self.label(frame, "Drop-off Person", 1)
+        self.dropoff_person = self.entry(frame, 1)
 
-        self.label(frame, "Evidence Item Number", 2)
-        self.evidence_item_number = self.entry(frame, 2)
+        self.label(frame, "Received From", 2)
+        self.received_from = self.entry(frame, 2)
 
-        self.checked_out_from_evidence = self.checkbox(frame, "Checked out from evidence", 3)
+        self.label(frame, "Evidence Item Number", 3)
+        self.evidence_item_number = self.entry(frame, 3)
+
+        self.checked_out_from_evidence = self.checkbox(frame, "Checked out from evidence", 4)
         self.checked_out_from_evidence.set(True)
 
-        self.label(frame, "Checked Out Date/Time", 4)
-        self.checked_out_datetime = self.entry(frame, 4)
+        self.label(frame, "Checked Out Date/Time", 5)
+        self.checked_out_datetime = self.entry(frame, 5)
 
-        self.returned_to_evidence = self.checkbox(frame, "Returned to evidence", 5)
+        self.returned_to_evidence = self.checkbox(frame, "Returned to evidence", 6)
         self.returned_to_evidence.set(True)
 
-        self.label(frame, "Returned Date/Time", 6)
-        self.returned_datetime = self.entry(frame, 6)
+        self.label(frame, "Returned Date/Time", 7)
+        self.returned_datetime = self.entry(frame, 7)
 
         locations = self.settings.get("common_evidence_locations", [])
-        self.label(frame, "Evidence Location", 7)
+        self.label(frame, "Evidence Location", 8)
         if locations:
-            self.evidence_location = self.combo(frame, locations, 7)
+            self.evidence_location = self.combo(frame, locations, 8)
         else:
-            self.evidence_location = self.entry(frame, 7)
+            self.evidence_location = self.entry(frame, 8)
+
+        note = tk.Label(
+            frame,
+            text=(
+                "Agency Dropping Item Off captures the outside agency or internal unit "
+                "bringing the device/media to the lab. Received From can be the specific person."
+            ),
+            bg=THEME["panel"],
+            fg=THEME["muted"],
+            justify="left",
+            wraplength=760,
+            font=("Segoe UI", 10, "italic")
+        )
+        note.grid(row=9, column=0, columnspan=4, sticky="w", padx=10, pady=(14, 6))
 
     def build_device_tab(self):
         frame = self.device_tab
@@ -447,12 +507,14 @@ class AcquisitionPacketGUI:
         note = tk.Label(
             frame,
             text=(
-                "Add one or more devices/media items. "
-                "Device-level FPR fields are captured with each device row."
+                "Add one or more devices/media items. Device storage, delivery condition, "
+                "and optional labeled device photos are captured with each device row."
             ),
             bg=THEME["panel"],
             fg=THEME["muted"],
-            font=("Segoe UI", 10, "italic")
+            font=("Segoe UI", 10, "italic"),
+            justify="left",
+            wraplength=820
         )
         note.grid(row=0, column=0, columnspan=4, sticky="w", padx=10, pady=10)
 
@@ -500,8 +562,89 @@ class AcquisitionPacketGUI:
         self.label(frame, "Services Used to Unlock", 9, column=2)
         self.device_services_used_to_unlock = self.entry(frame, 9, column=3, width=30)
 
+        presets = self.settings.get("preset_defaults", {})
+        storage_locations = self.settings.get("common_storage_locations", [])
+        delivery_conditions = self.settings.get("common_delivery_conditions", [])
+
+        self.label(frame, "Where Device Stored", 10)
+        if storage_locations:
+            self.device_storage_location = self.combo(
+                frame,
+                storage_locations,
+                10,
+                width=32,
+                default=presets.get("device_storage_location", "") or storage_locations[0]
+            )
+        else:
+            self.device_storage_location = self.entry(
+                frame,
+                10,
+                width=32,
+                default=presets.get("device_storage_location", "")
+            )
+
+        self.label(frame, "Condition Delivered", 10, column=2)
+        if delivery_conditions:
+            self.device_condition_delivered = self.combo(
+                frame,
+                delivery_conditions,
+                10,
+                column=3,
+                width=32,
+                default=presets.get("condition_delivered", "") or delivery_conditions[0]
+            )
+        else:
+            self.device_condition_delivered = self.entry(
+                frame,
+                10,
+                column=3,
+                width=32,
+                default=presets.get("condition_delivered", "")
+            )
+
+        self.label(frame, "Device Photos", 11)
+        photo_summary = tk.Label(
+            frame,
+            textvariable=self.current_device_photo_summary,
+            bg=THEME["input_bg"],
+            fg=THEME["text"],
+            anchor="w",
+            justify="left",
+            relief="solid",
+            borderwidth=1,
+            padx=8,
+            pady=6,
+            wraplength=520
+        )
+        photo_summary.grid(row=11, column=1, columnspan=2, sticky="ew", padx=10, pady=6)
+
+        photo_button_frame = tk.Frame(frame, bg=THEME["panel"])
+        photo_button_frame.grid(row=11, column=3, sticky="w", padx=5, pady=6)
+        tk.Button(
+            photo_button_frame,
+            text="Manage Photos",
+            command=self.open_device_photo_manager,
+            bg=THEME["secondary_button"],
+            fg=THEME["text"],
+            activebackground=THEME["secondary_button"],
+            activeforeground=THEME["text"],
+            relief="flat",
+            padx=10
+        ).pack(side="left", padx=(0, 6))
+        tk.Button(
+            photo_button_frame,
+            text="Open First",
+            command=self.open_selected_device_photo,
+            bg=THEME["secondary_button"],
+            fg=THEME["text"],
+            activebackground=THEME["secondary_button"],
+            activeforeground=THEME["text"],
+            relief="flat",
+            padx=10
+        ).pack(side="left")
+
         button_frame = tk.Frame(frame, bg=THEME["panel"])
-        button_frame.grid(row=10, column=0, columnspan=4, sticky="w", padx=10, pady=10)
+        button_frame.grid(row=12, column=0, columnspan=4, sticky="w", padx=10, pady=10)
 
         add_button = tk.Button(
             button_frame,
@@ -534,7 +677,7 @@ class AcquisitionPacketGUI:
         remove_button.pack(side="left")
 
         table_frame = tk.Frame(frame, bg=THEME["panel"])
-        table_frame.grid(row=11, column=0, columnspan=4, sticky="nsew", padx=10, pady=10)
+        table_frame.grid(row=13, column=0, columnspan=4, sticky="nsew", padx=10, pady=10)
 
         columns = (
             "type",
@@ -542,9 +685,9 @@ class AcquisitionPacketGUI:
             "description",
             "serial",
             "storage",
-            "volumes",
-            "encrypted",
-            "password_locked"
+            "condition",
+            "stored",
+            "photo"
         )
 
         self.device_tree = ttk.Treeview(
@@ -559,31 +702,44 @@ class AcquisitionPacketGUI:
         self.device_tree.heading("description", text="Description")
         self.device_tree.heading("serial", text="Serial / ID")
         self.device_tree.heading("storage", text="Storage Each")
-        self.device_tree.heading("volumes", text="Volumes")
-        self.device_tree.heading("encrypted", text="Encrypted")
-        self.device_tree.heading("password_locked", text="PW Locked")
+        self.device_tree.heading("condition", text="Condition")
+        self.device_tree.heading("stored", text="Stored")
+        self.device_tree.heading("photo", text="Photo")
 
         self.device_tree.column("type", width=120)
         self.device_tree.column("quantity", width=50, anchor="center")
         self.device_tree.column("description", width=220)
         self.device_tree.column("serial", width=130)
         self.device_tree.column("storage", width=100)
-        self.device_tree.column("volumes", width=80, anchor="center")
-        self.device_tree.column("encrypted", width=80, anchor="center")
-        self.device_tree.column("password_locked", width=90, anchor="center")
+        self.device_tree.column("condition", width=140)
+        self.device_tree.column("stored", width=150)
+        self.device_tree.column("photo", width=70, anchor="center")
 
         scrollbar = ttk.Scrollbar(
             table_frame,
             orient="vertical",
             command=self.device_tree.yview
         )
-        self.device_tree.configure(yscrollcommand=scrollbar.set)
+        h_scrollbar = ttk.Scrollbar(
+            table_frame,
+            orient="horizontal",
+            command=self.device_tree.xview
+        )
+        self.device_tree.configure(yscrollcommand=scrollbar.set, xscrollcommand=h_scrollbar.set)
 
-        self.device_tree.pack(side="left", fill="both", expand=True)
+        self.device_tree.pack(side="top", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
+        h_scrollbar.pack(side="bottom", fill="x")
 
-        frame.grid_rowconfigure(11, weight=1)
+        frame.grid_rowconfigure(13, weight=1)
         frame.grid_columnconfigure(1, weight=1)
+
+    def set_combo_or_entry_value(self, widget, value):
+        if isinstance(widget, ttk.Combobox):
+            widget.set(value)
+        else:
+            widget.delete(0, tk.END)
+            widget.insert(0, value)
 
     def clear_device_fields(self):
         self.device_quantity.delete(0, tk.END)
@@ -599,6 +755,8 @@ class AcquisitionPacketGUI:
         self.device_volume_scale.delete(0, tk.END)
         self.device_tools_used_to_decrypt.delete(0, tk.END)
         self.device_services_used_to_unlock.delete(0, tk.END)
+        self.current_device_photos = []
+        self.refresh_device_photo_summary()
 
         self.device_encrypted.set(False)
         self.device_decrypted.set(False)
@@ -609,6 +767,12 @@ class AcquisitionPacketGUI:
             self.device_type.set(DEVICE_TYPES[0])
 
         self.device_capacity_unit.set("GB")
+
+        presets = self.settings.get("preset_defaults", {})
+        storage_locations = self.settings.get("common_storage_locations", [])
+        conditions = self.settings.get("common_delivery_conditions", [])
+        self.set_combo_or_entry_value(self.device_storage_location, presets.get("device_storage_location", "") or (storage_locations[0] if storage_locations else ""))
+        self.set_combo_or_entry_value(self.device_condition_delivered, presets.get("condition_delivered", "") or (conditions[0] if conditions else ""))
 
     def add_device_to_table(self):
         quantity_text = self.get_widget_value(self.device_quantity)
@@ -663,7 +827,13 @@ class AcquisitionPacketGUI:
             "tools_used_to_decrypt": self.get_widget_value(self.device_tools_used_to_decrypt),
             "password_locked": self.device_password_locked.get(),
             "password_unlocked": self.device_password_unlocked.get(),
-            "services_used_to_unlock": self.get_widget_value(self.device_services_used_to_unlock)
+            "services_used_to_unlock": self.get_widget_value(self.device_services_used_to_unlock),
+            "device_storage_location": self.get_widget_value(self.device_storage_location),
+            "condition_delivered": self.get_widget_value(self.device_condition_delivered),
+            "device_photos": [dict(photo) for photo in self.current_device_photos],
+            "device_photo_path": self.current_device_photos[0].get("path", "") if self.current_device_photos else "",
+            "device_photo_copied_path": "",
+            "device_photo_copy_note": ""
         }
 
         self.devices.append(device)
@@ -672,8 +842,7 @@ class AcquisitionPacketGUI:
         if capacity_size is not None:
             storage_display = f"{capacity_size:g} {capacity_unit}"
 
-        encrypted_display = "Yes" if device["encrypted"] else "No"
-        password_locked_display = "Yes" if device["password_locked"] else "No"
+        photo_count = len(device.get("device_photos", []))
 
         self.device_tree.insert(
             "",
@@ -684,9 +853,9 @@ class AcquisitionPacketGUI:
                 device["description"],
                 device["serial"],
                 storage_display,
-                device["volumes_examined"],
-                encrypted_display,
-                password_locked_display
+                device.get("condition_delivered", ""),
+                device.get("device_storage_location", ""),
+                f"{photo_count} photo" if photo_count == 1 else f"{photo_count} photos"
             )
         )
 
@@ -876,8 +1045,8 @@ class AcquisitionPacketGUI:
         self.label(frame, "Processing Status", 3)
         self.processing_status = self.combo(frame, PROCESSING_STATUSES, 3)
 
-        self.label(frame, "Processing Notes", 4)
-        self.processing_notes = self.entry(frame, 4, width=70)
+        self.label(frame, "Processing / Acquisition Narrative", 4)
+        self.processing_notes = self.textbox(frame, 4, width=70, height=6)
 
         self.label(frame, "Output Type", 5)
         self.output_type = self.combo(frame, OUTPUT_TYPES, 5)
@@ -951,6 +1120,21 @@ class AcquisitionPacketGUI:
             font=("Segoe UI", 11)
         )
         open_folder_button.pack(side="left", padx=(0, 10))
+
+        stats_button = tk.Button(
+            button_frame,
+            text="Export Lab Stats",
+            command=self.open_lab_stats_window,
+            bg=THEME["input_bg"],
+            fg=THEME["text"],
+            activebackground=THEME["input_bg"],
+            activeforeground=THEME["text"],
+            relief="flat",
+            padx=20,
+            pady=10,
+            font=("Segoe UI", 11)
+        )
+        stats_button.pack(side="left", padx=(0, 10))
 
         clear_button = tk.Button(
             button_frame,
@@ -1052,6 +1236,8 @@ class AcquisitionPacketGUI:
 
         self.time_processed.delete(0, tk.END)
 
+        self.agency_dropping_item_off.delete(0, tk.END)
+        self.agency_dropping_item_off.insert(0, self.settings.get("preset_defaults", {}).get("agency_dropping_item_off", ""))
         self.dropoff_person.delete(0, tk.END)
         self.received_from.delete(0, tk.END)
         self.evidence_item_number.delete(0, tk.END)
@@ -1095,7 +1281,7 @@ class AcquisitionPacketGUI:
         if PROCESSING_STATUSES:
             self.processing_status.set(PROCESSING_STATUSES[0])
 
-        self.processing_notes.delete(0, tk.END)
+        self.processing_notes.delete("1.0", tk.END)
 
         if OUTPUT_TYPES:
             self.output_type.set(OUTPUT_TYPES[0])
@@ -1155,6 +1341,7 @@ class AcquisitionPacketGUI:
                 "time_processed": self.get_widget_value(self.time_processed)
             },
             "intake_info": {
+                "agency_dropping_item_off": self.get_widget_value(self.agency_dropping_item_off),
                 "dropoff_person": self.get_widget_value(self.dropoff_person),
                 "received_from": self.get_widget_value(self.received_from),
                 "evidence_item_number": self.get_widget_value(self.evidence_item_number),
@@ -1439,6 +1626,61 @@ class AcquisitionPacketGUI:
         except Exception as error:
             messagebox.showerror("Export Error", str(error))
 
+    def open_lab_stats_window(self):
+        stats_window = tk.Toplevel(self.root)
+        stats_window.title("Export Lab Statistics")
+        stats_window.geometry("620x300")
+        configure_toplevel(stats_window, self.colors)
+        stats_window.grab_set()
+
+        frame = tk.Frame(stats_window, bg=THEME["panel"])
+        frame.pack(fill="both", expand=True, padx=15, pady=15)
+
+        instructions = tk.Label(
+            frame,
+            text=(
+                "Export lab statistics from saved ByteCase Acquire packet JSON files. "
+                "Date filters use Date Processed when available. Leave dates blank to export all saved packets."
+            ),
+            bg=THEME["panel"],
+            fg=THEME["text"],
+            justify="left",
+            wraplength=560
+        )
+        instructions.grid(row=0, column=0, columnspan=2, sticky="w", padx=10, pady=(0, 12))
+
+        self.label(frame, "Start Date (YYYY-MM-DD)", 1)
+        start_var = tk.StringVar(value="")
+        tk.Entry(frame, textvariable=start_var, width=24, bg=THEME["input_bg"], fg=THEME["text"], insertbackground=THEME["text"], relief="solid", borderwidth=1).grid(row=1, column=1, sticky="w", padx=10, pady=6)
+
+        self.label(frame, "End Date (YYYY-MM-DD)", 2)
+        end_var = tk.StringVar(value="")
+        tk.Entry(frame, textvariable=end_var, width=24, bg=THEME["input_bg"], fg=THEME["text"], insertbackground=THEME["text"], relief="solid", borderwidth=1).grid(row=2, column=1, sticky="w", padx=10, pady=6)
+
+        def export_now():
+            try:
+                csv_path, xlsx_path, totals = export_lab_statistics(
+                    self.settings,
+                    start_date=start_var.get().strip(),
+                    end_date=end_var.get().strip()
+                )
+                messagebox.showinfo(
+                    "Lab Statistics Exported",
+                    "Lab statistics exported successfully.\n\n"
+                    f"Packets: {totals.get('packets', 0)}\n"
+                    f"Devices: {totals.get('devices', 0)}\n\n"
+                    f"CSV: {csv_path}\n"
+                    f"XLSX: {xlsx_path}"
+                )
+                stats_window.destroy()
+            except Exception as error:
+                messagebox.showerror("Lab Statistics Error", str(error))
+
+        button_frame = tk.Frame(frame, bg=THEME["panel"])
+        button_frame.grid(row=3, column=0, columnspan=2, sticky="e", padx=10, pady=20)
+        tk.Button(button_frame, text="Export", command=export_now, bg=THEME["accent"], fg=THEME["button_text"], activebackground=THEME["accent"], activeforeground=THEME["button_text"], relief="flat", padx=18, pady=8, font=("Segoe UI", 10, "bold")).pack(side="left", padx=(0, 8))
+        tk.Button(button_frame, text="Cancel", command=stats_window.destroy, bg=THEME["input_bg"], fg=THEME["text"], activebackground=THEME["input_bg"], activeforeground=THEME["text"], relief="flat", padx=18, pady=8).pack(side="left")
+
     def open_settings_window(self):
         settings_window = tk.Toplevel(self.root)
         settings_window.title("Settings")
@@ -1449,20 +1691,17 @@ class AcquisitionPacketGUI:
         notebook = ttk.Notebook(settings_window)
         notebook.pack(fill="both", expand=True, padx=15, pady=15)
 
-        output_tab = tk.Frame(notebook, bg=THEME["panel"])
-        appearance_tab = tk.Frame(notebook, bg=THEME["panel"])
-        branding_tab = tk.Frame(notebook, bg=THEME["panel"])
-        customization_tab = tk.Frame(notebook, bg=THEME["panel"])
-
-        notebook.add(output_tab, text="Output / Storage")
-        notebook.add(appearance_tab, text="Appearance")
-        notebook.add(branding_tab, text="Report Branding")
-        notebook.add(customization_tab, text="Customization / Defaults")
+        output_tab = self.create_scrollable_settings_tab(notebook, "Output / Storage")
+        appearance_tab = self.create_scrollable_settings_tab(notebook, "Appearance")
+        branding_tab = self.create_scrollable_settings_tab(notebook, "Report Branding")
+        customization_tab = self.create_scrollable_settings_tab(notebook, "Customization / Defaults")
+        presets_tab = self.create_scrollable_settings_tab(notebook, "Presets")
 
         self.build_output_settings_tab(output_tab)
         self.build_appearance_settings_tab(appearance_tab)
         self.build_branding_settings_tab(branding_tab)
         self.build_customization_settings_tab(customization_tab)
+        self.build_presets_settings_tab(presets_tab)
 
         button_frame = tk.Frame(settings_window, bg=THEME["bg"])
         button_frame.pack(fill="x", padx=15, pady=(0, 15))
@@ -1499,6 +1738,15 @@ class AcquisitionPacketGUI:
         )
         self.settings_tracking_workbook = tk.StringVar(
             value=output_paths.get("tracking_workbook_name", "fpr_tracking.xlsx")
+        )
+        self.settings_attachments_folder = tk.StringVar(
+            value=output_paths.get("attachments_folder_name", "attachments")
+        )
+        self.settings_device_photos_folder = tk.StringVar(
+            value=output_paths.get("device_photos_folder_name", "device_photos")
+        )
+        self.settings_lab_statistics_folder = tk.StringVar(
+            value=output_paths.get("lab_statistics_folder_name", "lab_statistics")
         )
 
         self.label(frame, "ByteCase Output Root", 0)
@@ -1609,6 +1857,51 @@ class AcquisitionPacketGUI:
         )
         workbook_entry.grid(row=5, column=1, sticky="w", padx=10, pady=6)
 
+        self.label(frame, "Attachments Folder Name", 6)
+        tk.Entry(
+            frame,
+            textvariable=self.settings_attachments_folder,
+            width=45,
+            bg=THEME["input_bg"],
+            fg=THEME["text"],
+            insertbackground=THEME["text"],
+            relief="solid",
+            borderwidth=1,
+            highlightthickness=1,
+            highlightbackground=THEME["border_strong"],
+            highlightcolor=THEME["focus_ring"]
+        ).grid(row=6, column=1, sticky="w", padx=10, pady=6)
+
+        self.label(frame, "Device Photos Folder Name", 7)
+        tk.Entry(
+            frame,
+            textvariable=self.settings_device_photos_folder,
+            width=45,
+            bg=THEME["input_bg"],
+            fg=THEME["text"],
+            insertbackground=THEME["text"],
+            relief="solid",
+            borderwidth=1,
+            highlightthickness=1,
+            highlightbackground=THEME["border_strong"],
+            highlightcolor=THEME["focus_ring"]
+        ).grid(row=7, column=1, sticky="w", padx=10, pady=6)
+
+        self.label(frame, "Lab Statistics Folder Name", 8)
+        tk.Entry(
+            frame,
+            textvariable=self.settings_lab_statistics_folder,
+            width=45,
+            bg=THEME["input_bg"],
+            fg=THEME["text"],
+            insertbackground=THEME["text"],
+            relief="solid",
+            borderwidth=1,
+            highlightthickness=1,
+            highlightbackground=THEME["border_strong"],
+            highlightcolor=THEME["focus_ring"]
+        ).grid(row=8, column=1, sticky="w", padx=10, pady=6)
+
         paths = get_output_paths(self.settings)
 
         preview = tk.Label(
@@ -1625,7 +1918,7 @@ class AcquisitionPacketGUI:
             justify="left",
             wraplength=760
         )
-        preview.grid(row=6, column=0, columnspan=3, sticky="w", padx=10, pady=20)
+        preview.grid(row=9, column=0, columnspan=3, sticky="w", padx=10, pady=20)
 
     def build_appearance_settings_tab(self, frame):
         appearance = self.settings.get("appearance", {})
@@ -1802,8 +2095,22 @@ class AcquisitionPacketGUI:
             "\n".join(self.settings.get("common_evidence_locations", []))
         )
 
-        self.label(frame, "Tools\nName | Version", 6)
-        self.settings_text_tools = self.settings_textbox(frame, 6)
+        self.label(frame, "Storage Locations\none per line", 6)
+        self.settings_text_storage_locations = self.settings_textbox(frame, 6)
+        self.settings_text_storage_locations.insert(
+            "1.0",
+            "\n".join(self.settings.get("common_storage_locations", []))
+        )
+
+        self.label(frame, "Delivery Conditions\none per line", 7)
+        self.settings_text_delivery_conditions = self.settings_textbox(frame, 7)
+        self.settings_text_delivery_conditions.insert(
+            "1.0",
+            "\n".join(self.settings.get("common_delivery_conditions", []))
+        )
+
+        self.label(frame, "Tools\nName | Version", 8)
+        self.settings_text_tools = self.settings_textbox(frame, 8)
 
         tool_lines = []
         for tool in self.settings.get("common_tools", []):
@@ -1816,6 +2123,71 @@ class AcquisitionPacketGUI:
                 tool_lines.append(name)
 
         self.settings_text_tools.insert("1.0", "\n".join(tool_lines))
+
+    def build_presets_settings_tab(self, frame):
+        presets = self.settings.get("preset_defaults", {})
+
+        self.settings_preset_agency = tk.StringVar(value=presets.get("agency_dropping_item_off", ""))
+        self.settings_preset_storage = tk.StringVar(value=presets.get("device_storage_location", ""))
+        self.settings_preset_condition = tk.StringVar(value=presets.get("condition_delivered", ""))
+
+        self.label(frame, "Default Agency Dropping Item Off", 0)
+        tk.Entry(
+            frame,
+            textvariable=self.settings_preset_agency,
+            width=60,
+            bg=THEME["input_bg"],
+            fg=THEME["text"],
+            insertbackground=THEME["text"],
+            relief="solid",
+            borderwidth=1,
+            highlightthickness=1,
+            highlightbackground=THEME["border_strong"],
+            highlightcolor=THEME["focus_ring"]
+        ).grid(row=0, column=1, sticky="w", padx=10, pady=6)
+
+        self.label(frame, "Default Device Storage Location", 1)
+        tk.Entry(
+            frame,
+            textvariable=self.settings_preset_storage,
+            width=60,
+            bg=THEME["input_bg"],
+            fg=THEME["text"],
+            insertbackground=THEME["text"],
+            relief="solid",
+            borderwidth=1,
+            highlightthickness=1,
+            highlightbackground=THEME["border_strong"],
+            highlightcolor=THEME["focus_ring"]
+        ).grid(row=1, column=1, sticky="w", padx=10, pady=6)
+
+        self.label(frame, "Default Condition Delivered", 2)
+        tk.Entry(
+            frame,
+            textvariable=self.settings_preset_condition,
+            width=60,
+            bg=THEME["input_bg"],
+            fg=THEME["text"],
+            insertbackground=THEME["text"],
+            relief="solid",
+            borderwidth=1,
+            highlightthickness=1,
+            highlightbackground=THEME["border_strong"],
+            highlightcolor=THEME["focus_ring"]
+        ).grid(row=2, column=1, sticky="w", padx=10, pady=6)
+
+        note = tk.Label(
+            frame,
+            text=(
+                "These presets fill common intake/device fields for new packets. "
+                "They are local settings only and can be edited on each packet."
+            ),
+            bg=THEME["panel"],
+            fg=THEME["muted"],
+            justify="left",
+            wraplength=760
+        )
+        note.grid(row=3, column=0, columnspan=3, sticky="w", padx=10, pady=20)
 
     def settings_textbox(self, parent, row):
         textbox = tk.Text(
@@ -1833,6 +2205,178 @@ class AcquisitionPacketGUI:
         )
         textbox.grid(row=row, column=1, sticky="w", padx=10, pady=6)
         return textbox
+
+    def refresh_device_photo_summary(self):
+        count = len(getattr(self, "current_device_photos", []))
+        if count == 0:
+            self.current_device_photo_summary.set("No photos added")
+            return
+
+        labels = [photo.get("label", "Photo") for photo in self.current_device_photos[:4]]
+        summary = f"{count} photo" if count == 1 else f"{count} photos"
+        summary += ": " + ", ".join(labels)
+        if count > 4:
+            summary += ", ..."
+        self.current_device_photo_summary.set(summary)
+
+    def open_device_photo_manager(self):
+        manager = tk.Toplevel(self.root)
+        manager.title("Device Photos")
+        manager.geometry("900x520")
+        configure_toplevel(manager, self.colors)
+        manager.grab_set()
+
+        frame = tk.Frame(manager, bg=THEME["panel"])
+        frame.pack(fill="both", expand=True, padx=14, pady=14)
+        frame.rowconfigure(1, weight=1)
+        frame.columnconfigure(0, weight=1)
+
+        note = tk.Label(
+            frame,
+            text=(
+                "Add one or more device photos and label them, such as Front, Back, Top, "
+                "Bottom, Screen, Ports, or Serial/Identifier. Photos are copied into the "
+                "Acquire packet during export."
+            ),
+            bg=THEME["panel"],
+            fg=THEME["muted"],
+            justify="left",
+            wraplength=820
+        )
+        note.grid(row=0, column=0, sticky="w", pady=(0, 10))
+
+        tree_frame = tk.Frame(frame, bg=THEME["panel"])
+        tree_frame.grid(row=1, column=0, sticky="nsew")
+        tree_frame.rowconfigure(0, weight=1)
+        tree_frame.columnconfigure(0, weight=1)
+
+        columns = ("label", "path")
+        photo_tree = ttk.Treeview(tree_frame, columns=columns, show="headings", height=10)
+        photo_tree.heading("label", text="Label")
+        photo_tree.heading("path", text="Image Path")
+        photo_tree.column("label", width=180)
+        photo_tree.column("path", width=620)
+        photo_tree.grid(row=0, column=0, sticky="nsew")
+
+        y_scroll = ttk.Scrollbar(tree_frame, orient="vertical", command=photo_tree.yview)
+        x_scroll = ttk.Scrollbar(tree_frame, orient="horizontal", command=photo_tree.xview)
+        photo_tree.configure(yscrollcommand=y_scroll.set, xscrollcommand=x_scroll.set)
+        y_scroll.grid(row=0, column=1, sticky="ns")
+        x_scroll.grid(row=1, column=0, sticky="ew")
+
+        working_photos = [dict(photo) for photo in getattr(self, "current_device_photos", [])]
+
+        def refresh_tree():
+            photo_tree.delete(*photo_tree.get_children())
+            for photo in working_photos:
+                photo_tree.insert("", tk.END, values=(photo.get("label", ""), photo.get("path", "")))
+
+        def next_default_label():
+            labels = [
+                "Front", "Back", "Top", "Bottom", "Left Side", "Right Side",
+                "Screen", "Ports", "Serial/Identifier", "Overall"
+            ]
+            used = {photo.get("label", "").lower() for photo in working_photos}
+            for label in labels:
+                if label.lower() not in used:
+                    return label
+            return f"Photo {len(working_photos) + 1}"
+
+        def add_files():
+            file_paths = filedialog.askopenfilenames(
+                parent=manager,
+                title="Select Device Photo(s)",
+                filetypes=[
+                    ("Image files", "*.png *.jpg *.jpeg *.bmp *.gif *.tif *.tiff"),
+                    ("All files", "*.*")
+                ]
+            )
+            for file_path in file_paths:
+                working_photos.append({"label": next_default_label(), "path": file_path})
+            refresh_tree()
+
+        def edit_label():
+            selected = photo_tree.selection()
+            if not selected:
+                messagebox.showinfo("No Photo Selected", "Select a photo row to edit the label.")
+                return
+            index = photo_tree.index(selected[0])
+            photo = working_photos[index]
+            editor = tk.Toplevel(manager)
+            editor.title("Edit Photo Label")
+            editor.geometry("520x180")
+            configure_toplevel(editor, self.colors)
+            editor.grab_set()
+            editor_frame = tk.Frame(editor, bg=THEME["panel"])
+            editor_frame.pack(fill="both", expand=True, padx=14, pady=14)
+            tk.Label(editor_frame, text="Label", bg=THEME["panel"], fg=THEME["text"]).grid(row=0, column=0, sticky="w", padx=5, pady=5)
+            label_var = tk.StringVar(value=photo.get("label", ""))
+            label_entry = tk.Entry(editor_frame, textvariable=label_var, width=45, bg=THEME["input_bg"], fg=THEME["text"], insertbackground=THEME["text"], relief="solid", borderwidth=1, highlightthickness=1, highlightbackground=THEME["border_strong"], highlightcolor=THEME["focus_ring"])
+            label_entry.grid(row=0, column=1, sticky="ew", padx=5, pady=5)
+            label_entry.focus_set()
+
+            def save_label():
+                photo["label"] = label_var.get().strip() or f"Photo {index + 1}"
+                refresh_tree()
+                editor.destroy()
+
+            tk.Button(editor_frame, text="Save", command=save_label, bg=THEME["accent"], fg=THEME["button_text"], activebackground=THEME["accent"], activeforeground=THEME["button_text"], relief="flat", padx=14, pady=6).grid(row=1, column=1, sticky="e", padx=5, pady=16)
+
+        def remove_selected():
+            selected = photo_tree.selection()
+            if not selected:
+                return
+            for item in reversed(selected):
+                index = photo_tree.index(item)
+                if 0 <= index < len(working_photos):
+                    del working_photos[index]
+            refresh_tree()
+
+        def open_photo():
+            selected = photo_tree.selection()
+            if not selected:
+                messagebox.showinfo("No Photo Selected", "Select a photo row to open.")
+                return
+            index = photo_tree.index(selected[0])
+            if 0 <= index < len(working_photos):
+                self.open_file_path(working_photos[index].get("path", ""), "Open Photo Error")
+
+        def apply_changes():
+            self.current_device_photos = [dict(photo) for photo in working_photos if str(photo.get("path", "")).strip()]
+            self.refresh_device_photo_summary()
+            manager.destroy()
+
+        button_frame = tk.Frame(frame, bg=THEME["panel"])
+        button_frame.grid(row=2, column=0, sticky="ew", pady=(12, 0))
+        tk.Button(button_frame, text="Add Photos", command=add_files, bg=THEME["secondary_button"], fg=THEME["text"], activebackground=THEME["secondary_button"], activeforeground=THEME["text"], relief="flat", padx=12, pady=6).pack(side="left", padx=(0, 8))
+        tk.Button(button_frame, text="Edit Label", command=edit_label, bg=THEME["secondary_button"], fg=THEME["text"], activebackground=THEME["secondary_button"], activeforeground=THEME["text"], relief="flat", padx=12, pady=6).pack(side="left", padx=(0, 8))
+        tk.Button(button_frame, text="Open", command=open_photo, bg=THEME["secondary_button"], fg=THEME["text"], activebackground=THEME["secondary_button"], activeforeground=THEME["text"], relief="flat", padx=12, pady=6).pack(side="left", padx=(0, 8))
+        tk.Button(button_frame, text="Remove", command=remove_selected, bg=THEME["input_bg"], fg=THEME["text"], activebackground=THEME["input_bg"], activeforeground=THEME["text"], relief="flat", padx=12, pady=6).pack(side="left", padx=(0, 8))
+        tk.Button(button_frame, text="Clear All", command=lambda: (working_photos.clear(), refresh_tree()), bg=THEME["input_bg"], fg=THEME["text"], activebackground=THEME["input_bg"], activeforeground=THEME["text"], relief="flat", padx=12, pady=6).pack(side="left")
+        tk.Button(button_frame, text="Apply", command=apply_changes, bg=THEME["accent"], fg=THEME["button_text"], activebackground=THEME["accent"], activeforeground=THEME["button_text"], relief="flat", padx=18, pady=6, font=("Segoe UI", 10, "bold")).pack(side="right")
+        tk.Button(button_frame, text="Cancel", command=manager.destroy, bg=THEME["input_bg"], fg=THEME["text"], activebackground=THEME["input_bg"], activeforeground=THEME["text"], relief="flat", padx=12, pady=6).pack(side="right", padx=(0, 8))
+        refresh_tree()
+
+    def open_file_path(self, file_path, error_title="Open File Error"):
+        file_path = str(file_path or "").strip()
+        if not file_path:
+            messagebox.showinfo("No File Selected", "No file path is selected.")
+            return
+        try:
+            if sys.platform.startswith("win"):
+                os.startfile(file_path)
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", file_path])
+            else:
+                subprocess.Popen(["xdg-open", file_path])
+        except Exception as error:
+            messagebox.showerror(error_title, f"Unable to open selected file:\n\n{error}")
+
+    def open_selected_device_photo(self):
+        if not getattr(self, "current_device_photos", []):
+            messagebox.showinfo("No Photos Added", "No device photos have been added for this device row.")
+            return
+        self.open_file_path(self.current_device_photos[0].get("path", ""), "Open Photo Error")
 
     def browse_base_output_folder(self):
         folder = filedialog.askdirectory(title="Select Base Output Folder")
@@ -1899,7 +2443,10 @@ class AcquisitionPacketGUI:
             "reports_folder_name": self.settings_reports_folder.get().strip() or "reports",
             "saved_packets_folder_name": self.settings_saved_packets_folder.get().strip() or "saved_packets",
             "tracking_folder_name": self.settings_tracking_folder.get().strip() or "tracking",
-            "tracking_workbook_name": self.settings_tracking_workbook.get().strip() or "fpr_tracking.xlsx"
+            "tracking_workbook_name": self.settings_tracking_workbook.get().strip() or "fpr_tracking.xlsx",
+            "attachments_folder_name": self.settings_attachments_folder.get().strip() or "attachments",
+            "device_photos_folder_name": self.settings_device_photos_folder.get().strip() or "device_photos",
+            "lab_statistics_folder_name": self.settings_lab_statistics_folder.get().strip() or "lab_statistics"
         }
         self.settings["report_branding"] = {
             "patch_image_path": self.settings_patch_image_path.get().strip()
@@ -1907,6 +2454,13 @@ class AcquisitionPacketGUI:
         self.settings["common_technicians"] = self.get_textbox_lines(self.settings_text_technicians)
         self.settings["common_investigators"] = self.get_textbox_lines(self.settings_text_investigators)
         self.settings["common_evidence_locations"] = self.get_textbox_lines(self.settings_text_locations)
+        self.settings["common_storage_locations"] = self.get_textbox_lines(self.settings_text_storage_locations)
+        self.settings["common_delivery_conditions"] = self.get_textbox_lines(self.settings_text_delivery_conditions)
+        self.settings["preset_defaults"] = {
+            "agency_dropping_item_off": self.settings_preset_agency.get().strip(),
+            "device_storage_location": self.settings_preset_storage.get().strip(),
+            "condition_delivered": self.settings_preset_condition.get().strip(),
+        }
         self.settings["common_tools"] = self.parse_tools_from_settings_textbox()
 
         save_settings(self.settings)

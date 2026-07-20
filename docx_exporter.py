@@ -91,6 +91,44 @@ def add_branding_image(document, settings):
         return
 
 
+
+def get_device_photos(device):
+    photos = device.get("device_photos", [])
+    if not isinstance(photos, list):
+        photos = []
+
+    normalized = []
+    for index, photo in enumerate(photos, start=1):
+        if isinstance(photo, dict):
+            path_text = str(photo.get("path", "")).strip()
+            copied_path = str(photo.get("copied_path", "")).strip()
+            copy_note = str(photo.get("copy_note", "")).strip()
+            label = str(photo.get("label", "")).strip() or f"Photo {index}"
+        else:
+            path_text = str(photo).strip()
+            copied_path = ""
+            copy_note = ""
+            label = f"Photo {index}"
+
+        if path_text or copied_path or copy_note:
+            normalized.append({
+                "label": label,
+                "path": path_text,
+                "copied_path": copied_path,
+                "copy_note": copy_note,
+            })
+
+    legacy_path = str(device.get("device_photo_path", "")).strip()
+    if legacy_path and not any(photo.get("path") == legacy_path for photo in normalized):
+        normalized.append({
+            "label": "Photo 1",
+            "path": legacy_path,
+            "copied_path": str(device.get("device_photo_copied_path", "")).strip(),
+            "copy_note": str(device.get("device_photo_copy_note", "")).strip(),
+        })
+
+    return normalized
+
 def build_docx_report(packet, settings):
     """
     Build a DOCX acquisition packet report.
@@ -171,6 +209,7 @@ def build_docx_report(packet, settings):
 
     add_heading(document, "Intake Information", level=1)
     add_label_value_table(document, [
+        ("Agency Dropping Item Off", intake.get("agency_dropping_item_off", "")),
         ("Drop-off Person", intake.get("dropoff_person", "")),
         ("Received From", intake.get("received_from", "")),
         ("Evidence Item Number", intake.get("evidence_item_number", "")),
@@ -187,8 +226,9 @@ def build_docx_report(packet, settings):
         ("Exam End Date", processing.get("exam_end_date", "")),
         ("Processing Type", processing.get("processing_type", "")),
         ("Processing Status", processing.get("processing_status", "")),
-        ("Processing Notes", processing.get("processing_notes", "")),
     ])
+    add_heading(document, "Processing / Acquisition Narrative", level=2)
+    add_paragraph_block(document, processing.get("processing_notes", ""))
 
     add_heading(document, "Device / Media Summary", level=1)
     add_label_value_table(document, [
@@ -236,7 +276,30 @@ def build_docx_report(packet, settings):
                 ("Password Locked", yes_no(device.get("password_locked", False))),
                 ("Password Unlocked", yes_no(device.get("password_unlocked", False))),
                 ("Services Used to Unlock", device.get("services_used_to_unlock", "")),
+                ("Where Device Stored", device.get("device_storage_location", "")),
+                ("Condition Delivered", device.get("condition_delivered", "")),
+                ("Device Photo Count", len(get_device_photos(device))),
             ])
+
+            photos = get_device_photos(device)
+            if photos:
+                add_heading(document, "Device Photos", level=3)
+                for photo_index, photo in enumerate(photos, start=1):
+                    document.add_paragraph(f"{photo_index}. {photo.get('label', '')}", style="List Number")
+                    add_label_value_table(document, [
+                        ("Original Path", photo.get("path", "")),
+                        ("Copied Path", photo.get("copied_path", "")),
+                        ("Copy Note", photo.get("copy_note", "")),
+                    ])
+
+                    copied_photo = str(photo.get("copied_path", "")).strip()
+                    if copied_photo:
+                        photo_path = Path(copied_photo)
+                        if photo_path.exists() and photo_path.suffix.lower() in SUPPORTED_IMAGE_EXTENSIONS:
+                            try:
+                                document.add_picture(str(photo_path), width=Inches(3.0))
+                            except Exception as error:
+                                document.add_paragraph(f"Device photo could not be embedded: {error}")
     else:
         document.add_paragraph("No device/media entries recorded.")
 

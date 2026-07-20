@@ -5,7 +5,7 @@ from pathlib import Path
 
 APP_NAME = "ByteCase Acquire"
 APP_SUBTITLE = "Acquisition Packet Generator"
-APP_VERSION = "0.9.1"
+APP_VERSION = "0.9.3"
 
 SUITE_NAME = "ByteCase"
 PUBLISHER_NAME = "Forensics Byte"
@@ -49,7 +49,10 @@ DEFAULT_SETTINGS = {
         "reports_folder_name": "reports",
         "saved_packets_folder_name": "saved_packets",
         "tracking_folder_name": "tracking",
-        "tracking_workbook_name": "fpr_tracking.xlsx"
+        "tracking_workbook_name": "fpr_tracking.xlsx",
+        "attachments_folder_name": "attachments",
+        "device_photos_folder_name": "device_photos",
+        "lab_statistics_folder_name": "lab_statistics"
     },
 
     "report_branding": {
@@ -78,6 +81,30 @@ DEFAULT_SETTINGS = {
         "Property Room",
         "Digital Evidence Storage"
     ],
+
+    "common_storage_locations": [
+        "Evidence Locker",
+        "Property Room",
+        "Digital Evidence Storage",
+        "Temporary Processing Shelf",
+        "Secure Lab Cabinet"
+    ],
+
+    "common_delivery_conditions": [
+        "Good / No visible damage",
+        "Damaged",
+        "Powered on",
+        "Powered off",
+        "Wet / liquid exposure",
+        "Broken screen",
+        "Unknown"
+    ],
+
+    "preset_defaults": {
+        "agency_dropping_item_off": "",
+        "device_storage_location": "",
+        "condition_delivered": ""
+    },
 
     "default_scope_statement": (
         "This documentation records the technical acquisition, extraction, imaging, "
@@ -132,6 +159,9 @@ def normalize_settings(settings):
         "saved_packets_folder_name": str(output_paths.get("saved_packets_folder_name", "saved_packets")).strip() or "saved_packets",
         "tracking_folder_name": str(output_paths.get("tracking_folder_name", "tracking")).strip() or "tracking",
         "tracking_workbook_name": str(output_paths.get("tracking_workbook_name", "fpr_tracking.xlsx")).strip() or "fpr_tracking.xlsx",
+        "attachments_folder_name": str(output_paths.get("attachments_folder_name", "attachments")).strip() or "attachments",
+        "device_photos_folder_name": str(output_paths.get("device_photos_folder_name", "device_photos")).strip() or "device_photos",
+        "lab_statistics_folder_name": str(output_paths.get("lab_statistics_folder_name", "lab_statistics")).strip() or "lab_statistics",
     }
 
     report_branding = settings.get("report_branding", {})
@@ -141,7 +171,7 @@ def normalize_settings(settings):
         "patch_image_path": str(report_branding.get("patch_image_path", "")).strip()
     }
 
-    for list_key in ["common_technicians", "common_investigators", "common_evidence_locations"]:
+    for list_key in ["common_technicians", "common_investigators", "common_evidence_locations", "common_storage_locations", "common_delivery_conditions"]:
         values = settings.get(list_key, [])
         if not isinstance(values, list):
             values = []
@@ -172,6 +202,15 @@ def normalize_settings(settings):
             cleaned_tools.append({"name": name, "version": version})
             seen_tools.add(key)
     settings["common_tools"] = cleaned_tools
+
+    preset_defaults = settings.get("preset_defaults", {})
+    if not isinstance(preset_defaults, dict):
+        preset_defaults = {}
+    settings["preset_defaults"] = {
+        "agency_dropping_item_off": str(preset_defaults.get("agency_dropping_item_off", "")).strip(),
+        "device_storage_location": str(preset_defaults.get("device_storage_location", "")).strip(),
+        "condition_delivered": str(preset_defaults.get("condition_delivered", "")).strip(),
+    }
 
     settings["default_scope_statement"] = str(settings.get("default_scope_statement", "")).strip()
     if not settings["default_scope_statement"]:
@@ -254,11 +293,17 @@ def get_output_paths(settings=None, case_number=None):
     saved_packets_folder_name = output_settings.get("saved_packets_folder_name", "saved_packets")
     tracking_folder_name = output_settings.get("tracking_folder_name", "tracking")
     tracking_workbook_name = output_settings.get("tracking_workbook_name", "fpr_tracking.xlsx")
+    attachments_folder_name = output_settings.get("attachments_folder_name", "attachments")
+    device_photos_folder_name = output_settings.get("device_photos_folder_name", "device_photos")
+    lab_statistics_folder_name = output_settings.get("lab_statistics_folder_name", "lab_statistics")
 
     reports_dir = base_path / reports_folder_name
     saved_packets_dir = base_path / saved_packets_folder_name
     tracking_dir = base_path / tracking_folder_name
     tracking_workbook_path = tracking_dir / tracking_workbook_name
+    attachments_dir = base_path / attachments_folder_name
+    device_photos_dir = attachments_dir / device_photos_folder_name
+    lab_statistics_dir = root_path / TOOL_FOLDER_NAME / lab_statistics_folder_name
 
     return {
         "root_path": root_path,
@@ -266,7 +311,10 @@ def get_output_paths(settings=None, case_number=None):
         "reports_dir": reports_dir,
         "saved_packets_dir": saved_packets_dir,
         "tracking_dir": tracking_dir,
-        "tracking_workbook_path": tracking_workbook_path
+        "tracking_workbook_path": tracking_workbook_path,
+        "attachments_dir": attachments_dir,
+        "device_photos_dir": device_photos_dir,
+        "lab_statistics_dir": lab_statistics_dir
     }
 
 
@@ -278,6 +326,9 @@ def ensure_directories(settings=None, case_number=None):
     paths["reports_dir"].mkdir(parents=True, exist_ok=True)
     paths["saved_packets_dir"].mkdir(parents=True, exist_ok=True)
     paths["tracking_dir"].mkdir(parents=True, exist_ok=True)
+    paths["attachments_dir"].mkdir(parents=True, exist_ok=True)
+    paths["device_photos_dir"].mkdir(parents=True, exist_ok=True)
+    paths["lab_statistics_dir"].mkdir(parents=True, exist_ok=True)
 
     return paths
 
